@@ -1,8 +1,9 @@
+
 # SEGP19 Project
 
 ## Project Overview
 
-The SEGP19 project focuses on developing and evaluating the performance of the YOLO model, along with providing tools for pathologist verification.
+The SEGP19 project aims to assist pathologists by reducing the time and stress associated with analyzing Pap smear images. By leveraging artificial intelligence, this project enhances efficiency in the diagnostic process.
 
 ## Directory Structure
 
@@ -18,6 +19,4 @@ The SEGP19 project focuses on developing and evaluating the performance of the Y
 
 ## Contribution Guidelines
 
-Contributions and suggestions for this project are welcome. Before submitting a pull request, please ensure your code adheres to the project's coding standards and passes all tests.
-
-For any questions or further information, please contact the project maintainer. 
+Contributions and suggestions for this project are welcome. Please follow standard GitHub procedures for issues and pull requests.

@@ -1,4 +1,3 @@
-
 import os
 from PIL import Image
 import numpy as np
@@ -13,10 +12,10 @@ def preprocess_images(directory):
             file_path = os.path.join(directory, filename)
             image = Image.open(file_path)
 
-            # 转换为黑白（灰度）
+            # Convert to black and white (grayscale)
             grayscale_image = image.convert("L")
 
-            # 归一化：将图像像素值从 [0, 255] 缩放到 [0, 1]
+            # Normalize: scale pixel values from [0, 255] to [0, 1]
             normalized_image_array = np.array(grayscale_image) / 255.0
             normalized_image = Image.fromarray((normalized_image_array * 255).astype(np.uint8))
 

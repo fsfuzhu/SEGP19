@@ -1,0 +1,85 @@
+# config/config.yaml
+num_epochs: 100
+batch_size: 32
+
+# Model parameters
+model:
+  architecture: resnet18
+  pretrained: true
+  num_classes: 3
+
+# Optimizer Configuration
+optimizer:
+  name: Adam  # Options: SGD, Adam, etc.
+  params:
+    lr: 0.001
+    weight_decay: 1e-4
+
+# Scheduler Configuration
+scheduler:
+  name: ReduceLROnPlateau  # Options: StepLR, ReduceLROnPlateau, etc.
+  params:
+    mode: min
+    factor: 0.1
+    patience: 5
+    verbose: true
+
+# Criterion (Loss Function) Configuration
+criterion:
+  name: CrossEntropyLoss
+  params:
+    weight: null  # Or provide a list of weights if using class weights
+    ignore_index: -100
+    reduction: mean
+
+
+# Data parameters
+data:
+  # please replace the following paths with your own paths
+  train_dir: /media/nine/HD_1/HD_2_from_seven/Yann/pap_smear/data/kaggle_data/resnet_dataset1/train
+  val_dir: /media/nine/HD_1/HD_2_from_seven/Yann/pap_smear/data/kaggle_data/resnet_dataset1/val
+  num_workers: 4
+  input_size: 224
+  
+  transforms:
+    train:
+      - name: RandomResizedCrop
+        params:
+          size: 224
+      - name: RandomHorizontalFlip
+        params:
+          p: 0.5
+      - name: RandomRotation
+        params:
+          degrees: 15
+      - name: ColorJitter
+        params:
+          brightness: 0.2
+          contrast: 0.2
+          saturation: 0.2
+          hue: 0.1
+      - name: ToTensor
+        params: {}
+      - name: Normalize
+        params:
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+
+    val:
+      - name: Resize
+        params:
+          size: 256
+      - name: CenterCrop
+        params:
+          size: 224
+      - name: ToTensor
+        params: {}
+      - name: Normalize
+        params:
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+
+# Logging parameters
+logging:
+  tensorboard_logdir: weights
+  save_best_model_path: runs/${run_name}/best.pt

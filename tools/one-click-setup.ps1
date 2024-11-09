@@ -1,17 +1,11 @@
+# Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+
 # Function to check command existence
 function Check-Command {
     param (
         [string]$command
     )
     return (Get-Command $command -ErrorAction SilentlyContinue)
-}
-
-# Check if Python is installed
-$pythonPath = Check-Command -command "python"
-
-if (-not $pythonPath) {
-    Write-Host "Python is not installed. Exiting script." -ForegroundColor Red
-    return
 }
 
 # Get Python version
@@ -23,11 +17,13 @@ if ($versionMatch.Success) {
     $minorVersion = [int]$versionMatch.Groups[2].Value
     $patchVersion = [int]$versionMatch.Groups[3].Value
 
+	Write-Host "Current Python version is $($majorVersion).$($minorVersion).$($patchVersion)" -ForegroundColor Cyan
+
     # Check if version is between 3.9 and 3.12
     if ($majorVersion -eq 3 -and ($minorVersion -ge 9 -and $minorVersion -le 12)) {
-        Write-Host "Python version is $($majorVersion).$($minorVersion).$($patchVersion)" -ForegroundColor Cyan
+		
     } else {
-        Write-Host "Pytorch is only supported on Python versions 3.9-3.12. Please consult your administration." -ForegroundColor Red
+        Write-Host "Pytorch is only supported on Python versions 3.9-3.12. Exiting setup." -ForegroundColor Red
         return
     }
 } else {
@@ -73,7 +69,8 @@ if ($pipPath) {
 # Prepare installation commands
 $installPytorch = if ($cudaVersion) {
     $cudaVersionModified = $cudaVersion -replace '\.', ''
-    "pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu$cudaVersionModified"
+    # "pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu$cudaVersionModified"
+    "pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu124" #downgrade for compatibility issues
 } else {
     "pip install torch torchvision torchaudio" # CPU only
 }
@@ -90,4 +87,11 @@ $installPackages = @(
 foreach ($command in $installPackages) {
     Write-Host "`nRunning command:`n$command" -ForegroundColor Cyan
     Invoke-Expression $command
+}
+
+$cudaInstalled = Check-Command -command "nvcc"
+
+if (-not $cudaInstalled) {
+    Write-Host "CUDA is not installed, please obtain installer from the link below" -ForegroundColor Red
+    Write-Host "https://developer.nvidia.com/cuda-downloads?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exe_local" -ForegroundColor Yellow
 }

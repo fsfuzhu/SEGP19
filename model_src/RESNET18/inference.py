@@ -19,7 +19,7 @@ pip install numpy
 pip install ultralytics
 
 STEP 2: 
-cd RESNET18
+cd model_src/RESNET18
 python inference.py
 '''
  

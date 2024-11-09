@@ -46,9 +46,9 @@ RESNET_CONFIDENCE_THRESHOLD = 0.0  # Adjust based on desired specificity
 CLASS_NAMES = ['abnormal', 'benign', 'normal']
 
 CLASS_COLOURS = {
-    "normal": (102, 204, 0),    # Green for Normal
-    "abnormal": (0, 0, 255),    # Red for Abnormal
-    "benign": (255, 0, 0),      # Blue for Benigh
+    "normal": (100, 131, 54),    # Green for Normal
+    "abnormal": (28, 32, 190),    # Red for Abnormal
+    "benign":  (204, 102, 0),      # Blue for Benigh
 }
 
 # Load YOLO model (Assuming a PyTorch model)

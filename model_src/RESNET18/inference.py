@@ -13,7 +13,17 @@ import torch.nn.functional as F
 '''
 STEP 1: Install the required libraries
 install needed library
-pip install torch torchvision
+
+pip install torch torchvision (don't use this)
+pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu124 (CUDA 12.4)
+
+NVIDIA Options:
+https://developer.nvidia.com/cuda-downloads?target_os=Windows&target_arch=x86_64&target_version=10&target_type=exe_local //CUDA Toolkit
+
+cmd:
+nvidia-smi //check gpu stats
+nvcc --version //check cuda version installed
+
 pip install opencv-python
 pip install numpy
 pip install ultralytics
@@ -59,7 +69,7 @@ def load_yolo_model(model_path):
 
 # Load ResNet model
 def load_resnet_model(model_path, num_classes=3):
-    model = resnet18(pretrained=False)
+    model = resnet18(weights=None)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()

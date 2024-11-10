@@ -2,7 +2,8 @@ $installPackages = @(
 	"pip uninstall torch torchvision torchaudio",
 	"pip uninstall opencv-python",
 	"pip uninstall ultralytics",
-	"pip uninstall pyvips"
+	"pip uninstall pyvips",
+	"pip install customtkinter"
 )
 
 foreach ($command in $installPackages) {

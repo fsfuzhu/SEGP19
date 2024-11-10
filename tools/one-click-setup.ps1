@@ -80,7 +80,8 @@ $installPackages = @(
     "pip install opencv-python",
     "pip install numpy",
     "pip install ultralytics",
-    "pip install pyvips"
+    "pip install pyvips",
+    "pip install customtkinter"
 )
 
 # Install packages

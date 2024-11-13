@@ -2,6 +2,9 @@ import tkinter as tk
 from tkinter import filedialog
 import customtkinter as ctk
 
+ctk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -15,7 +18,7 @@ class App(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # Sidebar (not sure why this disappears when navigating to other screens, might remove)
-        self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0)
+        self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0, fg_color="#505050")
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_rowconfigure(4, weight=1)
 

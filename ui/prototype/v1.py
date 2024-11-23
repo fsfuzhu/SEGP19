@@ -20,13 +20,14 @@ class App(ctk.CTk):
         # Sidebar (not sure why this disappears when navigating to other screens, might remove)
         self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0, fg_color="#505050")
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(4, weight=1)
+        self.sidebar_frame.grid_rowconfigure(5, weight=1) # Amount of side buttons +1
 
         # Side buttons
         self.sidebar_buttons = [
             ctk.CTkButton(self.sidebar_frame, text="Convert to SVS", command=self.show_conversion_screen),
-            ctk.CTkButton(self.sidebar_frame, command=self.sidebar_button_event),
-            ctk.CTkButton(self.sidebar_frame, command=self.sidebar_button_event),
+            ctk.CTkButton(self.sidebar_frame, text="SVS to JPG", command=self.sidebar_button_event),
+            ctk.CTkButton(self.sidebar_frame, text="Color Correction", command=self.sidebar_button_event),
+            ctk.CTkButton(self.sidebar_frame, text="Analyse Input", command=self.sidebar_button_event),
         ]
         for index, button in enumerate(self.sidebar_buttons, start=1):
             button.grid(row=index, column=0, padx=20, pady=10)

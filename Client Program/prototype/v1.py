@@ -11,40 +11,45 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
+        # Window config
         self.title("V1")
-        self.geometry(f"{1100}x580")
+        self.geometry("1100x580")
         self.minsize(1100, 580)
 
-        # Layout configuration
+        # Grid config
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # Sidebar (not sure why this disappears when navigating to other screens, might remove)
+        # UI
+        self._create_sidebar()
+        self.active_screen = None
+
+    def _create_sidebar(self):
+        sidebar_buttons_data = [
+            ("Convert to SVS", lambda: self._switch_to_screen(KFB_TO_SVS_SCREEN)),
+            ("SVS to JPG", lambda: self._switch_to_screen(SVS_TO_JPG_SCREEN)),
+            ("Color Correction", self.sidebar_button_event),
+            ("Analyze Input", self.sidebar_button_event),
+        ]
+
         self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0, fg_color="#505050")
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
-        self.sidebar_frame.grid_rowconfigure(5, weight=1) # Amount of side buttons +1
+        self.sidebar_frame.grid_rowconfigure(len(sidebar_buttons_data) + 1, weight=1)
 
-        # Side buttons
-        self.sidebar_buttons = [
-            ctk.CTkButton(self.sidebar_frame, text="Convert to SVS", command=self.show_KFB_TO_SVS_SCREEN),
-            ctk.CTkButton(self.sidebar_frame, text="SVS to JPG", command=self.show_SVS_TO_JPG_SCREEN),
-            ctk.CTkButton(self.sidebar_frame, text="Color Correction", command=self.sidebar_button_event),
-            ctk.CTkButton(self.sidebar_frame, text="Analyse Input", command=self.sidebar_button_event),
-        ]
-        for index, button in enumerate(self.sidebar_buttons, start=1):
+        for index, (text, command) in enumerate(sidebar_buttons_data, start=1):
+            button = ctk.CTkButton(self.sidebar_frame, text=text, command=command)
             button.grid(row=index, column=0, padx=20, pady=10)
 
     def sidebar_button_event(self):
         print("side button clicked")
 
-    def show_KFB_TO_SVS_SCREEN(self):
-        self.conversion_screen = KFB_TO_SVS_SCREEN(self)
-        self.conversion_screen.grid(row=0, column=1, sticky="nsew")
+    def _switch_to_screen(self, screen_class):
+        if self.active_screen:
+            self.active_screen.destroy()
 
-    def show_SVS_TO_JPG_SCREEN(self):
-        self.conversion_screen = SVS_TO_JPG_SCREEN(self)
-        self.conversion_screen.grid(row=0, column=1, sticky="nsew")
-    
+        self.active_screen = screen_class(self)
+        self.active_screen.grid(row=0, column=1, sticky="nsew")
+
 class KFB_TO_SVS_SCREEN(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, width=960, height=540, corner_radius=10)

@@ -36,6 +36,30 @@ def create_checkbox(master, text, command, row, column, padx=10, pady=10, state=
         checkbox.select()
     return checkbox
 
+def file_input_criteria_toggle(isDir, isFile, dirCheckbox, fileCheckbox):
+    fileCheckbox.configure(state="disabled" if isDir.get() else "normal")
+    dirCheckbox.configure(state="disabled" if isFile.get() else "normal")
+
+def browse_input(isDir, isFile, pathDialog, file_type):
+    if isDir.get():
+        selected_path = browse_dialog("directory")
+    elif isFile.get():
+        selected_path = browse_dialog("file", filetypes=[(f"{file_type} Files", f"*.{file_type.lower()}")])
+    else:
+        messagebox.showerror("Error", "Please select 'isDir' or 'isFile'")
+        return
+    
+    if selected_path:
+        pathDialog.delete(0, tk.END)
+        pathDialog.insert(0, selected_path)
+
+def browse_output_directory(isDir, pathDialog):
+    if isDir.get():
+        selected_path = browse_dialog("directory")
+    if selected_path:
+        pathDialog.delete(0, tk.END)
+        pathDialog.insert(0, selected_path)
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -70,7 +94,7 @@ class App(ctk.CTk):
             button.grid(row=index, column=0, padx=20, pady=10)
 
     def sidebar_button_event(self):
-        print("side button clicked")
+        messagebox.showinfo("Success", "Feature coming soon!")
 
     def _switch_to_screen(self, screen_class):
         if self.active_screen:
@@ -94,7 +118,7 @@ class KFB_TO_SVS_SCREEN(ctk.CTkFrame):
         self.kfb_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.kfb_checkbox_toggle, row=0, column=1)
 
         # TIF output
-        self.select_output = create_button(self, text="TIF Output", row=1, column=0, command=self.browse_output_directory)
+        self.select_output = create_button(self, text="TIF Output", row=1, column=0, command=self.browse_output)
         self.output_path = create_path_input(self, width=300, row=1, column=1)
         self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
 
@@ -104,28 +128,13 @@ class KFB_TO_SVS_SCREEN(ctk.CTkFrame):
         self.kfb_checkbox_toggle()
 
     def kfb_checkbox_toggle(self):
-        self.kfb_isFile.configure(state="disabled" if self.kfb_isDir.get() else "normal")
-        self.kfb_isDir.configure(state="disabled" if self.kfb_isFile.get() else "normal")
+        file_input_criteria_toggle(self.kfb_isDir, self.kfb_isFile, self.kfb_isDir, self.kfb_isFile)
 
     def browse_kfb(self):
-        if self.kfb_isDir.get():
-            selected_path = browse_dialog("directory")
-        elif self.kfb_isFile.get():
-            selected_path = browse_dialog("file", filetypes=[("KFB Files", "*.kfb")])
-        else:
-            messagebox.showerror("Error", "Please select 'isDir' or 'isFile'")
-            return
+        browse_input(self.kfb_isDir, self.kfb_isFile, self.kfb_path, "KFB")
 
-        if selected_path:
-            self.kfb_path.delete(0, tk.END)
-            self.kfb_path.insert(0, selected_path)
-
-    def browse_output_directory(self):
-        if self.output_isDir.get():
-            selected_path = browse_dialog("directory")
-        if selected_path:
-            self.output_path.delete(0, tk.END)
-            self.output_path.insert(0, selected_path)
+    def browse_output(self):
+        browse_output_directory(self.output_isDir, self.output_path)
 
     def start_conversion(self):
         kfb_dir = self.kfb_path.get().strip()
@@ -136,7 +145,7 @@ class KFB_TO_SVS_SCREEN(ctk.CTkFrame):
             return
 
         # Add actual conversion logic here
-        messagebox.showinfo("Success", "Conversion started successfully!")
+        messagebox.showinfo("Success", "Feature coming soon!")
 
 class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
     def __init__(self, master):
@@ -153,7 +162,7 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.svs_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.svs_checkbox_toggle, row=0, column=2)
 
         # JPG output
-        self.select_output = create_button(self, text="JPG Output", row=1, column=0, command=self.browse_output_directory)
+        self.select_output = create_button(self, text="JPG Output", row=1, column=0, command=self.browse_output)
         self.output_path = create_path_input(self, width=300, row=1, column=1)
         self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=1, column=2, state="disabled", selected=True)
 
@@ -163,28 +172,13 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.svs_checkbox_toggle()
 
     def svs_checkbox_toggle(self):
-        self.svs_isFile.configure(state="disabled" if self.svs_isDir.get() else "normal")
-        self.svs_isDir.configure(state="disabled" if self.svs_isFile.get() else "normal")
+        file_input_criteria_toggle(self.svs_isDir, self.svs_isFile, self.svs_isDir, self.svs_isFile)
 
     def browse_svs(self):
-        if self.svs_isDir.get():
-            selected_path = browse_dialog("directory")
-        elif self.svs_isFile.get():
-            selected_path = browse_dialog("file", filetypes=[("SVS Files", "*.svs")])
-        else:
-            messagebox.showerror("Error", "Please select 'isDir' or 'isFile'")
-            return
+        browse_input(self.svs_isDir, self.svs_isFile, self.svs_path, "SVS")
 
-        if selected_path:
-            self.svs_path.delete(0, tk.END)
-            self.svs_path.insert(0, selected_path)
-
-    def browse_output_directory(self):
-        if self.output_isDir.get():
-            selected_path = browse_dialog("directory")
-        if selected_path:
-            self.output_path.delete(0, tk.END)
-            self.output_path.insert(0, selected_path)
+    def browse_output(self):
+        browse_output_directory(self.output_isDir, self.output_path)
 
     def start_conversion(self):
         svs_dir = self.svs_path.get()

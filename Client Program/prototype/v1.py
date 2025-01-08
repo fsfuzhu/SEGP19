@@ -1,8 +1,9 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import customtkinter as ctk
-import subprocess
 import os
+import pyvips
+from concurrent.futures import ThreadPoolExecutor
 
 ctk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
 ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
@@ -59,6 +60,95 @@ def browse_output_directory(isDir, pathDialog):
     if selected_path:
         pathDialog.delete(0, tk.END)
         pathDialog.insert(0, selected_path)
+
+def convert_svs_to_jpg_tiles_parallel(input_path, output_dir, tile_size=1024, level=0, max_workers=4):
+    """
+    Split an SVS file into multiple JPG tiles in parallel.
+
+    Parameters:
+    - input_path: Input SVS file path
+    - output_dir: Directory for output JPG files
+    - tile_size: Size of each tile (default is 1024x1024 pixels)
+    - level: Image level to read (default 0 is the highest resolution)
+    - max_workers: Number of threads for parallel processing (default is 4)
+    """
+
+    svs_files = []
+    if os.path.isdir(input_path):
+        svs_files = [os.path.join(input_path, f) for f in os.listdir(input_path) if f.lower().endswith('.svs')]
+        if not svs_files:
+            messagebox.showerror("Error", "No SVS files found in specific directory")
+    else:
+        svs_files = [input_path]
+
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        for svs_file in svs_files:
+            file_name = os.path.splitext(os.path.basename(svs_file))[0]
+            file_output_dir = os.path.join(output_dir, file_name)
+            os.makedirs(file_output_dir, exist_ok=True)
+
+            # Load the SVS file
+            image = pyvips.Image.new_from_file(svs_file, access='sequential')
+
+            # Calculate scale factor
+            scale_str = image.get('openslide.level[{}].downsample'.format(level))
+            if scale_str is None:
+                scale = 1.0 # Default to 1.0 if no downscale factor is specified
+            else:
+                scale = float(scale_str) # Convert string to float
+
+            # Get dimensions for the specified level
+            width = int(image.width / scale)
+            height = int(image.height / scale)
+            # print(f"Image dimensions at level {level}: {width}x{height}")
+
+            # Calculate number of tiles
+            tiles_x = (width + tile_size - 1) // tile_size
+            tiles_y = (height + tile_size - 1) // tile_size
+            # print(f"Dividing into {tiles_x} x {tiles_y} = {tiles_x * tiles_y} tiles")
+
+            # Process tiles in parallel using a thread pool
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for ty in range(tiles_y):
+                    for tx in range(tiles_x):
+                        executor.submit(process_tile, image, scale, tx, ty, tile_size, level, file_output_dir)
+
+        messagebox.showinfo("Success", "Conversion complete!")
+
+    except Exception as e:
+        messagebox.showerror("Error", f"Conversion failed: {e}")
+
+def process_tile(image, scale, tx, ty, tile_size, level, output_dir):
+    """
+    Process a single tile and save it as a JPG file.
+    """
+    try:
+        x = tx * tile_size * scale
+        y = ty * tile_size * scale
+        w = tile_size * scale
+        h = tile_size * scale
+
+        # Extract the region
+        region = image.crop(x, y, w, h).resize(1 / scale)
+
+        # Convert to RGB mode
+        if region.bands == 4:
+            region = region[:3]  # Remove the alpha channel
+        elif region.bands == 1:
+            region = region.colourspace("srgb")
+
+        # Define output filename
+        output_filename = f"tile_{ty}_{tx}.jpg"
+        output_path = os.path.join(output_dir, output_filename)
+
+        # Save as JPG file
+        region.write_to_file(output_path, Q=100)  # Q=90 for JPEG quality
+        print(f"Saved tile: {output_path}")
+    except Exception as e:
+        print(f"Failed to process tile ({tx}, {ty}): {e}")
 
 class App(ctk.CTk):
     def __init__(self):
@@ -188,35 +278,7 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
             messagebox.showerror("Error", "Empty directory is not allowed!")
             return
 
-        try:
-            script_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'split_svs_to_jpg')
-            script_file = "convertSVS.py"
-
-            if not os.path.isdir(script_dir):
-                raise NotADirectoryError(f"Directory does not exist: {script_dir}")
-
-            subprocess.run(
-                [
-                    "python",
-                    script_file,
-                    svs_dir,
-                    output_dir,
-                    "1024",  # Tile size
-                    "0",     # Level
-                    "4"      # Max workers
-                ],
-                cwd=script_dir,
-                check=True
-            )
-            messagebox.showinfo("Success", "Conversion complete!")
-        except subprocess.CalledProcessError as e:
-            messagebox.showerror("Error", f"Conversion failed:\n{e}")
-        except FileNotFoundError:
-            messagebox.showerror("Error", "Could not find the external script. Please check the path.")
-        except NotADirectoryError as e:
-            messagebox.showerror("Error", f"Invalid directory:\n{e}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Unexpected error:\n{e}")
+        convert_svs_to_jpg_tiles_parallel(svs_dir, output_dir, 1024, 0, 4)
 
 if __name__ == "__main__":
     app = App()

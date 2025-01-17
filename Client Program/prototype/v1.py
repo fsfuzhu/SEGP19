@@ -169,7 +169,7 @@ class App(ctk.CTk):
 
     def _create_sidebar(self):
         sidebar_buttons_data = [
-            ("Convert to SVS", lambda: self._switch_to_screen(KFB_TO_SVS_SCREEN)),
+            # ("Convert to SVS", lambda: self._switch_to_screen(KFB_TO_SVS_SCREEN)),
             ("SVS to JPG", lambda: self._switch_to_screen(SVS_TO_JPG_SCREEN)),
             ("Color Correction", self.sidebar_button_event),
             ("Analyze Input", self.sidebar_button_event),
@@ -240,24 +240,34 @@ class KFB_TO_SVS_SCREEN(ctk.CTkFrame):
 class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, width=960, height=540, corner_radius=10)
+        self.configure(fg_color="#2c2f33")  # Background color
 
-        # Master frames for checkboxes
-        self.checkbox_frame_kfb = create_checkbox_frame(self, row=0, column=2)
-        self.checkbox_frame_output = create_checkbox_frame(self, row=1, column=2)
+        # Title
+        self.title_label = ctk.CTkLabel(self, text="SVS to JPG Converter", font=("Arial", 20, "bold"))
+        self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10), sticky="n")
 
-        # SVS input
-        self.select_svs = create_button(self, text="SVS Input", row=0, column=0, command=self.browse_svs)
-        self.svs_path = create_path_input(self, width=300, row=0, column=1)
-        self.svs_isDir = create_checkbox(master=self.checkbox_frame_kfb, text="isDir", command=self.svs_checkbox_toggle, row=0, column=1, selected=True)
-        self.svs_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.svs_checkbox_toggle, row=0, column=2)
+        # SVS Input Section
+        self.svs_label = ctk.CTkLabel(self, text="SVS Input", font=("Arial", 14))
+        self.svs_label.grid(row=1, column=0, padx=10, pady=(10, 5), sticky="w")
 
-        # JPG output
-        self.select_output = create_button(self, text="JPG Output", row=1, column=0, command=self.browse_output)
-        self.output_path = create_path_input(self, width=300, row=1, column=1)
-        self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=1, column=2, state="disabled", selected=True)
+        self.svs_path = create_path_input(self, width=300, row=1, column=1)
+        self.select_svs = create_button(self, text="Browse", row=1, column=2, command=self.browse_svs)
+        self.checkbox_frame_kfb = create_checkbox_frame(self, row=2, column=1)
+        self.svs_isDir = create_checkbox(master=self.checkbox_frame_kfb, text="isDir", command=self.svs_checkbox_toggle, row=0, column=0, selected=True)
+        self.svs_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.svs_checkbox_toggle, row=0, column=1)
+
+        # JPG Output Section
+        self.output_label = ctk.CTkLabel(self, text="JPG Output", font=("Arial", 14))
+        self.output_label.grid(row=3, column=0, padx=10, pady=(10, 5), sticky="w")
+
+        self.output_path = create_path_input(self, width=300, row=3, column=1)
+        self.select_output = create_button(self, text="Browse", row=3, column=2, command=self.browse_output)
+        self.checkbox_frame_output = create_checkbox_frame(self, row=4, column=1)
+        self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
 
         # Start Conversion Button
-        self.start_button = create_button(self, text="Start Conversion", row=2, column=0, pady=20, command=self.start_conversion)
+        self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.start_conversion)
+        self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
 
         self.svs_checkbox_toggle()
 

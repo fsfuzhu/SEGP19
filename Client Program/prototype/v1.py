@@ -3,10 +3,23 @@ from tkinter import filedialog, messagebox
 import customtkinter as ctk
 import os
 import pyvips
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import cv2
+import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+from ultralytics import YOLO
+from torchvision.models import resnet18
+from torchvision import transforms
 
 ctk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
 ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
+
+YOLO_CONFIDENCE_THRESHOLD = 0.5  # Adjust based on model performance
+RESNET_CONFIDENCE_THRESHOLD = 0.0  # Adjust based on desired specificity
+RESNET_MODEL_PATH = './models/resnet18_model.pth'
+YOLO_MODEL_PATH = './models/yolov8x_model.pt'
 
 def browse_dialog(dialog_type, filetypes=None):
     if dialog_type == "directory":
@@ -172,7 +185,7 @@ class App(ctk.CTk):
             # ("Convert to SVS", lambda: self._switch_to_screen(KFB_TO_SVS_SCREEN)),
             ("SVS to JPG", lambda: self._switch_to_screen(SVS_TO_JPG_SCREEN)),
             ("Color Correction", self.sidebar_button_event),
-            ("Analyze Input", self.sidebar_button_event),
+            ("Analyze Input", lambda: self._switch_to_screen(analyze_JPG_SCREEN)),
         ]
 
         self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0, fg_color="#505050")
@@ -289,6 +302,213 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
             return
 
         convert_svs_to_jpg_tiles_parallel(svs_dir, output_dir, 1024, 0, 4)
+
+class analyze_JPG_SCREEN(ctk.CTkFrame):
+
+    def __init__(self, master):
+        super().__init__(master, width=960, height=540, corner_radius=10)
+        self.configure(fg_color="#2c2f33")  # Background color
+
+        # Title
+        self.title_label = ctk.CTkLabel(self, text="Analyze Images", font=("Arial", 20, "bold"))
+        self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10), sticky="n")
+
+        # JPG Input Section
+        self.jpg_label = ctk.CTkLabel(self, text="JPG Folder", font=("Arial", 14))
+        self.jpg_label.grid(row=1, column=0, padx=10, pady=(10, 5), sticky="w")
+
+        self.jpg_path = create_path_input(self, width=300, row=1, column=1)
+        self.select_jpg = create_button(self, text="Browse", row=1, column=2, command=self.browse_jpg)
+        self.checkbox_frame_jpg = create_checkbox_frame(self, row=2, column=1)
+        self.isCPU = create_checkbox(master=self.checkbox_frame_jpg, text="CPU", command=self.device_checkbox_toggle, row=0, column=0, selected=True)
+        self.isGPU = create_checkbox(master=self.checkbox_frame_jpg, text="GPU", command=self.device_checkbox_toggle, row=0, column=1)
+
+        # Output Section
+        self.output_label = ctk.CTkLabel(self, text="AI Output Destination", font=("Arial", 14))
+        self.output_label.grid(row=3, column=0, padx=10, pady=(10, 5), sticky="w")
+
+        self.output_path = create_path_input(self, width=300, row=3, column=1)
+        self.select_output = create_button(self, text="Browse", row=3, column=2, command=self.browse_output)
+        self.checkbox_frame_output = create_checkbox_frame(self, row=4, column=1)
+        self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
+
+        # Hidden Variable
+        self.jpg_isDir = create_checkbox(master=None, text="isDir", command=None, row=0, column=0, selected=True)
+        self.jpg_isDir.grid_forget()
+
+        # Start Conversion Button
+        self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.start_analyzing)
+        self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
+
+        # Additional Text
+        self.notes = ctk.CTkLabel(self, text="If GPU can't be enabled, it means CUDA isn't detected in system.", font=("Arial", 15))
+        self.notes.grid(row=6, column=0, columnspan=3, pady=(20, 10), sticky="n")
+
+        # Select CPU as default first
+        self.device = torch.device("cpu")
+        self.device_checkbox_toggle()
+
+    def browse_jpg(self):
+        browse_input(self.jpg_isDir, None, self.jpg_path, None)
+
+    def browse_output(self):
+        browse_output_directory(self.output_isDir, self.output_path)
+
+    def device_checkbox_toggle(self):
+        self.isGPU.configure(state="disabled" if not torch.cuda.is_available() or self.isCPU.get() else "normal")
+        self.isCPU.configure(state="disabled" if self.isGPU.get() else "normal")
+
+    def load_yolo_model(self):
+        yolo_model = YOLO(YOLO_MODEL_PATH)
+        return yolo_model
+    
+    def load_resnet_model(self, num_classes):
+        model = resnet18(weights=None)
+        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        model.load_state_dict(torch.load(RESNET_MODEL_PATH, map_location=self.device))
+        model.eval()
+        model.to(self.device)
+        return model
+
+    # Function to perform cell detection using YOLO
+    def detect_cells(self, yolo_model, image):
+        results = yolo_model.predict(source=image, save=False)
+        boxes = []
+        for result in results:
+            if result.boxes is None:
+                continue  # No boxes detected in this result
+
+            # Iterate over each bounding box
+            for i, box in enumerate(result.boxes.xyxy):
+                # Move the box tensor to CPU and convert to NumPy
+                box_np = box.cpu().numpy()
+                
+                # Check for NaN values
+                if np.isnan(box_np).any():
+                    continue  # Skip invalid boxes
+
+                # Convert box coordinates to integers
+                x1, y1, x2, y2 = map(int, box_np)
+                conf = float(result.boxes.conf[i].cpu().numpy()) if len(result.boxes.conf) > 0 else 0.0
+                if conf > YOLO_CONFIDENCE_THRESHOLD:
+                    boxes.append({
+                        'bbox': [x1, y1, x2, y2]
+                    })
+        return boxes
+
+    # Preprocessing for ResNet model
+    def preprocess_cell_image(self, cell_image):
+        preprocess = transforms.Compose([
+            transforms.ToPILImage(),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std =[0.229, 0.224, 0.225])
+        ])
+        return preprocess(cell_image)
+
+    # Function to classify cropped cells using ResNet
+    def classify_cells(self, resnet_model, cell_images):
+        cell_tensors = []
+        for cell_img in cell_images:
+            processed = self.preprocess_cell_image(cell_img)
+            cell_tensors.append(processed)
+        cell_batch = torch.stack(cell_tensors).to(self.device)
+        with torch.no_grad():
+            outputs = resnet_model(cell_batch)
+            probabilities = F.softmax(outputs, dim=1)
+            confidences, predictions = torch.max(probabilities, dim=1)
+        return predictions.cpu().numpy(), confidences.cpu().numpy()
+
+    def start_analyzing(self):
+        jpg_dir = self.jpg_path.get()
+        output_dir = self.output_path.get()
+
+        if not jpg_dir or not output_dir:
+            messagebox.showerror("Error", "Empty directory is not allowed!")
+            return
+
+        if self.isCPU.get():
+            self.device = torch.device("cpu")
+        elif self.isGPU.get():
+            self.device = torch.device("cuda")
+        else:
+            messagebox.showerror("Error", "Please select either CPU or GPU to process images")
+            return
+        
+        os.makedirs(output_dir, exist_ok=True)
+        
+        CLASS_NAMES = ['abnormal', 'benign', 'normal']
+        CLASS_COLOURS = {
+            "normal": (100, 131, 54),    # Green for Normal
+            "abnormal": (28, 32, 190),    # Red for Abnormal
+            "benign":  (204, 102, 0),      # Blue for Benigh
+        }
+
+        yolo_model = self.load_yolo_model()
+        resnet_model = self.load_resnet_model(len(CLASS_NAMES))
+        normal_total, abnormal_total, benign_total = 0, 0, 0
+
+        for img_filename in os.listdir(jpg_dir):
+            img_path = os.path.join(jpg_dir, img_filename)
+            image = cv2.imread(img_path)
+            if image is None:
+                print(f"Failed to load image {img_filename}")
+                continue
+
+            # Detect cells
+            detections = self.detect_cells(yolo_model, image)
+
+            # List to hold cropped cell images
+            cropped_cells = []
+            boxes_to_draw = []
+            for det in detections:
+                x1, y1, x2, y2 = map(int, det['bbox'])
+                cell_image = image[y1:y2, x1:x2]
+                cropped_cells.append(cell_image)
+                boxes_to_draw.append({
+                    'bbox': det['bbox'],
+                    'class': None,  # Placeholder, will be filled after classification
+                    'class_confidence': None,  # Placeholder
+                })
+
+            if len(cropped_cells) == 0:
+                continue
+
+            # Classify cells
+            predictions, confidences = self.classify_cells(resnet_model, cropped_cells)
+
+            # Filter and annotate detections
+            for idx, box in enumerate(boxes_to_draw):
+                class_idx = predictions[idx]
+                class_confidence = confidences[idx]
+                if class_confidence < RESNET_CONFIDENCE_THRESHOLD:
+                    continue  # Skip low-confidence predictions
+                
+                if class_idx == 0:
+                    abnormal_total += 1
+                elif class_idx == 1:
+                    benign_total += 1
+                else:
+                    normal_total += 1
+                class_name = CLASS_NAMES[class_idx]
+                box['class'] = class_name
+                box['class_confidence'] = class_confidence
+
+                # Draw bounding box and label on the image
+                x1, y1, x2, y2 = map(int, box['bbox'])
+                label = f"{class_name}: {class_confidence:.2f}"
+                color = CLASS_COLOURS.get(class_name, (255, 255, 255))  # Default to white if class ID not in class_colors
+                cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
+                cv2.putText(image, label, (x1 + 1, y1 + 12),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+                
+            output_path = os.path.join(output_dir, img_filename)
+            cv2.imwrite(output_path, image)
+            print(f"Processed and saved annotated image: {output_path}")
+
+        total_cells = normal_total + abnormal_total + benign_total
+        print(f"Normal: {normal_total} ({(normal_total/total_cells)*100}%), Abnormal: {abnormal_total} ({(abnormal_total/total_cells)*100}%), Benign: {benign_total} ({(benign_total/total_cells)*100}%)")
 
 if __name__ == "__main__":
     app = App()

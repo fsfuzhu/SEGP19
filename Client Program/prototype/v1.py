@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import cv2
 import numpy as np
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from ultralytics import YOLO
 from torchvision.models import resnet18
@@ -212,7 +213,12 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
             messagebox.showerror("Error", "Empty directory is not allowed!")
             return
 
-        self.convert_svs_to_jpg_tiles_parallel(svs_dir, output_dir, 1024, 0, 4)
+        self.thread = threading.Thread(
+            target=self.convert_svs_to_jpg_tiles_parallel,
+            args=(svs_dir, output_dir, 1024, 0, 4),
+            daemon=True
+        )
+        self.thread.start()
 
     def convert_svs_to_jpg_tiles_parallel(self, input_path, output_dir, tile_size=1024, level=0, max_workers=4):
         """
@@ -264,10 +270,9 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
                 # print(f"Dividing into {tiles_x} x {tiles_y} = {tiles_x * tiles_y} tiles")
 
                 # Process tiles in parallel using a thread pool
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    for ty in range(tiles_y):
-                        for tx in range(tiles_x):
-                            executor.submit(self.process_tile, image, scale, tx, ty, tile_size, level, file_output_dir)
+                for ty in range(tiles_y):
+                    for tx in range(tiles_x):
+                        self.process_tile(image, scale, tx, ty, tile_size, level, file_output_dir)
 
             messagebox.showinfo("Success", "Conversion complete!")
 
@@ -337,7 +342,7 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.jpg_isDir.grid_forget()
 
         # Start Conversion Button
-        self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.start_analyzing)
+        self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.threading_analyze)
         self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
 
         # Additional Text
@@ -357,6 +362,14 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
     def device_checkbox_toggle(self):
         self.isGPU.configure(state="disabled" if not torch.cuda.is_available() or self.isCPU.get() else "normal")
         self.isCPU.configure(state="disabled" if self.isGPU.get() else "normal")
+
+    def threading_analyze(self):
+        self.thread = threading.Thread(
+            target=self.start_analyzing,
+            args=(),
+            daemon=True
+        )
+        self.thread.start()
 
     def load_yolo_model(self):
         yolo_model = YOLO(YOLO_MODEL_PATH)

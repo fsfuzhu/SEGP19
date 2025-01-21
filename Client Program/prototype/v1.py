@@ -75,6 +75,12 @@ def browse_output_directory(isDir, pathDialog):
         pathDialog.delete(0, tk.END)
         pathDialog.insert(0, selected_path)
 
+def log_to_console(console_box, message):
+    console_box.configure(state="normal")
+    console_box.insert("end", f"{message}\n")
+    console_box.configure(state="disabled")
+    console_box.yview("end")
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -194,6 +200,11 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.start_conversion)
         self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
 
+        # Console Output Area
+        self.console_output = ctk.CTkTextbox(self, height=120, wrap="word", font=("Courier", 12))
+        self.console_output.grid(row=6, column=0, columnspan=3, padx=20, pady=20, sticky="nsew")
+        self.console_output.configure(state="disabled")
+
         self.svs_checkbox_toggle()
 
     def svs_checkbox_toggle(self):
@@ -229,7 +240,7 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         - output_dir: Directory for output JPG files
         - tile_size: Size of each tile (default is 1024x1024 pixels)
         - level: Image level to read (default 0 is the highest resolution)
-        - max_workers: Number of threads for parallel processing (default is 4)
+        - max_workers: Number of threads for parallel processing (default is 4) [Disabled for UI responsiveness as of now]
         """
 
         svs_files = []
@@ -304,12 +315,11 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
 
             # Save as JPG file
             region.write_to_file(output_path, Q=100)  # Q=90 for JPEG quality
-            print(f"Saved tile: {output_path}")
+            log_to_console(self.console_output, f"Saved tile: {output_path}")
         except Exception as e:
-            print(f"Failed to process tile ({tx}, {ty}): {e}")
+            log_to_console(self.console_output, f"Error processing tile ({tx}, {ty}): {e}")
 
 class analyze_JPG_SCREEN(ctk.CTkFrame):
-
     def __init__(self, master):
         super().__init__(master, width=960, height=540, corner_radius=10)
         self.configure(fg_color="#2c2f33")  # Background color
@@ -342,12 +352,17 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.jpg_isDir.grid_forget()
 
         # Start Conversion Button
-        self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.threading_analyze)
+        self.start_button = create_button(self, text="Start Analyzing", row=5, column=1, pady=20, command=self.threading_analyze)
         self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
 
         # Additional Text
         self.notes = ctk.CTkLabel(self, text="If GPU can't be enabled, it means CUDA isn't detected in system.", font=("Arial", 15))
         self.notes.grid(row=6, column=0, columnspan=3, pady=(20, 10), sticky="n")
+
+        # Console Output Area
+        self.console_output = ctk.CTkTextbox(self, height=120, wrap="word", font=("Courier", 12))
+        self.console_output.grid(row=6, column=0, columnspan=3, padx=20, pady=20, sticky="nsew")
+        self.console_output.configure(state="disabled")
 
         # Select CPU as default first
         self.device = torch.device("cpu")
@@ -363,7 +378,9 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.isGPU.configure(state="disabled" if not torch.cuda.is_available() or self.isCPU.get() else "normal")
         self.isCPU.configure(state="disabled" if self.isGPU.get() else "normal")
 
+    # To maintain UI responsiveness
     def threading_analyze(self):
+        log_to_console(self.console_output, "Beginning to analyze, please wait patiently..\n\n")
         self.thread = threading.Thread(
             target=self.start_analyzing,
             args=(),
@@ -466,7 +483,7 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
             img_path = os.path.join(jpg_dir, img_filename)
             image = cv2.imread(img_path)
             if image is None:
-                print(f"Failed to load image {img_filename}")
+                log_to_console(self.console_output, f"Failed to load image {img_filename}")
                 continue
 
             # Detect cells
@@ -518,10 +535,10 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
                 
             output_path = os.path.join(output_dir, img_filename)
             cv2.imwrite(output_path, image)
-            print(f"Processed and saved annotated image: {output_path}")
+            log_to_console(self.console_output, f"Processed and saved annotated image: {output_path}")
 
         total_cells = normal_total + abnormal_total + benign_total
-        print(f"Normal: {normal_total} ({(normal_total/total_cells)*100}%), Abnormal: {abnormal_total} ({(abnormal_total/total_cells)*100}%), Benign: {benign_total} ({(benign_total/total_cells)*100}%)")
+        log_to_console(self.console_output, f"\n\nNormal: {normal_total} ({(normal_total/total_cells)*100}%), Abnormal: {abnormal_total} ({(abnormal_total/total_cells)*100}%), Benign: {benign_total} ({(benign_total/total_cells)*100}%)")
 
 if __name__ == "__main__":
     app = App()

@@ -88,7 +88,7 @@ class App(ctk.CTk):
         # Window config
         self.title("V1")
         self.geometry("1100x580")
-        self.minsize(1100, 580)
+        self.resizable(False, False)
 
         # Grid config
         self.grid_columnconfigure(1, weight=1)
@@ -124,61 +124,21 @@ class App(ctk.CTk):
         self.active_screen = screen_class(self)
         self.active_screen.grid(row=0, column=1, sticky="nsew")
 
-class KFB_TO_SVS_SCREEN(ctk.CTkFrame):
-    def __init__(self, master):
-        super().__init__(master, width=960, height=540, corner_radius=10)
-
-        # Master frames for checkboxes
-        self.checkbox_frame_kfb = create_checkbox_frame(self, row=0, column=2)
-        self.checkbox_frame_output = create_checkbox_frame(self, row=1, column=2)
-
-        # KFB input
-        self.select_kfb = create_button(self, text="KFB Input", row=0, column=0, command=self.browse_kfb)
-        self.kfb_path = create_path_input(self, width=300, row=0, column=1)
-        self.kfb_isDir = create_checkbox(master=self.checkbox_frame_kfb, text="isDir", command=self.kfb_checkbox_toggle, row=0, column=0, selected=True)
-        self.kfb_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.kfb_checkbox_toggle, row=0, column=1)
-
-        # TIF output
-        self.select_output = create_button(self, text="TIF Output", row=1, column=0, command=self.browse_output)
-        self.output_path = create_path_input(self, width=300, row=1, column=1)
-        self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
-
-        # Start Conversion Button
-        self.start_button = create_button(self, text="Start Conversion", row=2, column=0, pady=20, command=self.start_conversion)
-
-        self.kfb_checkbox_toggle()
-
-    def kfb_checkbox_toggle(self):
-        file_input_criteria_toggle(self.kfb_isDir, self.kfb_isFile, self.kfb_isDir, self.kfb_isFile)
-
-    def browse_kfb(self):
-        browse_input(self.kfb_isDir, self.kfb_isFile, self.kfb_path, "KFB")
-
-    def browse_output(self):
-        browse_output_directory(self.output_isDir, self.output_path)
-
-    def start_conversion(self):
-        kfb_dir = self.kfb_path.get().strip()
-        output_dir = self.output_path.get().strip()
-
-        if not kfb_dir or not output_dir:
-            messagebox.showerror("Error", "Empty directory is not allowed!")
-            return
-
-        # Add actual conversion logic here
-        messagebox.showinfo("Success", "Feature coming soon!")
-
 class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, width=960, height=540, corner_radius=10)
         self.configure(fg_color="#2c2f33")  # Background color
+
+        self.grid_columnconfigure(0, minsize=150)
+        self.grid_columnconfigure(1, minsize=300)
+        self.grid_columnconfigure(2, minsize=100)
 
         # Title
         self.title_label = ctk.CTkLabel(self, text="SVS to JPG Converter", font=("Arial", 20, "bold"))
         self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10), sticky="n")
 
         # SVS Input Section
-        self.svs_label = ctk.CTkLabel(self, text="SVS Input", font=("Arial", 14))
+        self.svs_label = ctk.CTkLabel(self, text="SVS Input".ljust(20), font=("Arial", 14))
         self.svs_label.grid(row=1, column=0, padx=10, pady=(10, 5), sticky="w")
 
         self.svs_path = create_path_input(self, width=300, row=1, column=1)
@@ -188,7 +148,7 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.svs_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.svs_checkbox_toggle, row=0, column=1)
 
         # JPG Output Section
-        self.output_label = ctk.CTkLabel(self, text="JPG Output", font=("Arial", 14))
+        self.output_label = ctk.CTkLabel(self, text="JPG Output".ljust(20), font=("Arial", 14))
         self.output_label.grid(row=3, column=0, padx=10, pady=(10, 5), sticky="w")
 
         self.output_path = create_path_input(self, width=300, row=3, column=1)
@@ -196,9 +156,16 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.checkbox_frame_output = create_checkbox_frame(self, row=4, column=1)
         self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
 
+        # Flag
+        self.stop_event = threading.Event()
+
         # Start Conversion Button
         self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.start_conversion)
         self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
+
+        # Cancel Button
+        self.cancel_button = create_button(self, text="Cancel", row=5, column=2, pady=20, command=self.cancel_conversion)
+        self.cancel_button.configure(fg_color="red", hover_color="#a83232")
 
         # Console Output Area
         self.console_output = ctk.CTkTextbox(self, height=120, wrap="word", font=("Courier", 12))
@@ -223,6 +190,8 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         if not svs_dir or not output_dir:
             messagebox.showerror("Error", "Empty directory is not allowed!")
             return
+        
+        self.stop_event.clear()
 
         self.thread = threading.Thread(
             target=self.convert_svs_to_jpg_tiles_parallel,
@@ -230,6 +199,10 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
             daemon=True
         )
         self.thread.start()
+
+    def cancel_conversion(self):
+        if self.thread and self.thread.is_alive():
+            self.stop_event.set()  # Set stop flag
 
     def convert_svs_to_jpg_tiles_parallel(self, input_path, output_dir, tile_size=1024, level=0, max_workers=4):
         """
@@ -256,6 +229,10 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
 
         try:
             for svs_file in svs_files:
+                if self.stop_event.is_set():
+                    messagebox.showerror("Conversion Cancelled", "Conversion was cancelled.")
+                    return
+                
                 file_name = os.path.splitext(os.path.basename(svs_file))[0]
                 file_output_dir = os.path.join(output_dir, file_name)
                 os.makedirs(file_output_dir, exist_ok=True)
@@ -282,7 +259,13 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
 
                 # Process tiles in parallel using a thread pool
                 for ty in range(tiles_y):
+                    if self.stop_event.is_set():
+                        messagebox.showerror("Conversion Cancelled", "Conversion was cancelled.")
+                        return
                     for tx in range(tiles_x):
+                        if self.stop_event.is_set():
+                            messagebox.showerror("Conversion Cancelled", "Conversion was cancelled.")
+                            return
                         self.process_tile(image, scale, tx, ty, tile_size, level, file_output_dir)
 
             messagebox.showinfo("Success", "Conversion complete!")
@@ -324,12 +307,16 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         super().__init__(master, width=960, height=540, corner_radius=10)
         self.configure(fg_color="#2c2f33")  # Background color
 
+        self.grid_columnconfigure(0, minsize=150)
+        self.grid_columnconfigure(1, minsize=300)
+        self.grid_columnconfigure(2, minsize=100)
+
         # Title
         self.title_label = ctk.CTkLabel(self, text="Analyze Images", font=("Arial", 20, "bold"))
         self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10), sticky="n")
 
         # JPG Input Section
-        self.jpg_label = ctk.CTkLabel(self, text="JPG Folder", font=("Arial", 14))
+        self.jpg_label = ctk.CTkLabel(self, text="JPG Folder".ljust(20), font=("Arial", 14))
         self.jpg_label.grid(row=1, column=0, padx=10, pady=(10, 5), sticky="w")
 
         self.jpg_path = create_path_input(self, width=300, row=1, column=1)
@@ -339,7 +326,7 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.isGPU = create_checkbox(master=self.checkbox_frame_jpg, text="GPU", command=self.device_checkbox_toggle, row=0, column=1)
 
         # Output Section
-        self.output_label = ctk.CTkLabel(self, text="AI Output Destination", font=("Arial", 14))
+        self.output_label = ctk.CTkLabel(self, text="AI Output Destination".ljust(20), font=("Arial", 14))
         self.output_label.grid(row=3, column=0, padx=10, pady=(10, 5), sticky="w")
 
         self.output_path = create_path_input(self, width=300, row=3, column=1)
@@ -355,14 +342,11 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.start_button = create_button(self, text="Start Analyzing", row=5, column=1, pady=20, command=self.threading_analyze)
         self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
 
-        # Additional Text
-        self.notes = ctk.CTkLabel(self, text="If GPU can't be enabled, it means CUDA isn't detected in system.", font=("Arial", 15))
-        self.notes.grid(row=6, column=0, columnspan=3, pady=(20, 10), sticky="n")
-
         # Console Output Area
         self.console_output = ctk.CTkTextbox(self, height=120, wrap="word", font=("Courier", 12))
         self.console_output.grid(row=6, column=0, columnspan=3, padx=20, pady=20, sticky="nsew")
         self.console_output.configure(state="disabled")
+        log_to_console(self.console_output, "If GPU can't be enabled, it means CUDA isn't detected in system.")
 
         # Select CPU as default first
         self.device = torch.device("cpu")

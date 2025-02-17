@@ -270,6 +270,8 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         except Exception as e:
             messagebox.showerror("Error", f"Conversion failed: {e}")
 
+        self.start_stop_button.configure(text="Start Conversion", fg_color="#7289da", hover_color="#5b6eae")
+
     def process_tile(self, image, scale, tx, ty, tile_size, level, output_dir):
         """
         Process a single tile and save it as a JPG file.
@@ -369,7 +371,7 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
                 return
             elif self.thread and self.thread.is_alive():
                 self.cancel_analyze()
-                self.start_stop_button.configure(text="Start Conversion", fg_color="#7289da", hover_color="#5b6eae")
+                self.start_stop_button.configure(text="Start Analyzing", fg_color="#7289da", hover_color="#5b6eae")
 
     # To maintain UI responsiveness
     def threading_analyze(self):
@@ -541,6 +543,7 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
 
         total_cells = normal_total + abnormal_total + benign_total
         log_to_console(self.console_output, f"\n\nNormal: {normal_total} ({(normal_total/total_cells)*100}%), Abnormal: {abnormal_total} ({(abnormal_total/total_cells)*100}%), Benign: {benign_total} ({(benign_total/total_cells)*100}%)")
+        self.start_stop_button.configure(text="Start Analyzing", fg_color="#7289da", hover_color="#5b6eae")
 
 if __name__ == "__main__":
     app = App()

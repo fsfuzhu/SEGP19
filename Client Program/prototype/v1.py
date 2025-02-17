@@ -129,17 +129,13 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         super().__init__(master, width=960, height=540, corner_radius=10)
         self.configure(fg_color="#2c2f33")  # Background color
 
-        self.grid_columnconfigure(0, minsize=150)
-        self.grid_columnconfigure(1, minsize=300)
-        self.grid_columnconfigure(2, minsize=100)
-
         # Title
         self.title_label = ctk.CTkLabel(self, text="SVS to JPG Converter", font=("Arial", 20, "bold"))
-        self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10), sticky="n")
+        self.title_label.grid(row=0, column=1, padx=60, pady=(20, 10), sticky="ew")
 
         # SVS Input Section
-        self.svs_label = ctk.CTkLabel(self, text="SVS Input".ljust(20), font=("Arial", 14))
-        self.svs_label.grid(row=1, column=0, padx=10, pady=(10, 5), sticky="w")
+        self.svs_label = ctk.CTkLabel(self, text="SVS Input", font=("Arial", 14))
+        self.svs_label.grid(row=1, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
 
         self.svs_path = create_path_input(self, width=300, row=1, column=1)
         self.select_svs = create_button(self, text="Browse", row=1, column=2, command=self.browse_svs)
@@ -148,34 +144,43 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.svs_isFile = create_checkbox(master=self.checkbox_frame_kfb, text="isFile", command=self.svs_checkbox_toggle, row=0, column=1)
 
         # JPG Output Section
-        self.output_label = ctk.CTkLabel(self, text="JPG Output".ljust(20), font=("Arial", 14))
-        self.output_label.grid(row=3, column=0, padx=10, pady=(10, 5), sticky="w")
+        self.output_label = ctk.CTkLabel(self, text="JPG Output", font=("Arial", 14))
+        self.output_label.grid(row=3, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
 
         self.output_path = create_path_input(self, width=300, row=3, column=1)
         self.select_output = create_button(self, text="Browse", row=3, column=2, command=self.browse_output)
         self.checkbox_frame_output = create_checkbox_frame(self, row=4, column=1)
         self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
 
-        # Flag
+        # Console Output Area
+        self.console_output = ctk.CTkTextbox(self, height=150, wrap="word", font=("Courier", 12))
+        self.console_output.grid(row=5, column=0, columnspan=3, padx=(120, 10), pady=20, sticky="ew")
+        self.console_output.configure(state="disabled")
+
+        # Flag to keep track of start/stop events
         self.stop_event = threading.Event()
 
-        # Start Conversion Button
-        self.start_button = create_button(self, text="Start Conversion", row=5, column=1, pady=20, command=self.start_conversion)
-        self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
-
-        # Cancel Button
-        self.cancel_button = create_button(self, text="Cancel", row=5, column=2, pady=20, command=self.cancel_conversion)
-        self.cancel_button.configure(fg_color="red", hover_color="#a83232")
-
-        # Console Output Area
-        self.console_output = ctk.CTkTextbox(self, height=120, wrap="word", font=("Courier", 12))
-        self.console_output.grid(row=6, column=0, columnspan=3, padx=20, pady=20, sticky="nsew")
-        self.console_output.configure(state="disabled")
+        # Start/Cancel Button
+        self.start_stop_button = create_button(self, text="Start Conversion", row=6, column=2, command=self.start_stop_toggle)
 
         self.svs_checkbox_toggle()
 
     def svs_checkbox_toggle(self):
         file_input_criteria_toggle(self.svs_isDir, self.svs_isFile, self.svs_isDir, self.svs_isFile)
+
+    def start_stop_toggle(self):
+        if self.start_stop_button.cget("text") == "Start Conversion":
+            self.start_conversion()
+            if not hasattr(self, 'thread'):
+                pass
+            else: #if self.thread exist, only change state to cancel
+                self.start_stop_button.configure(text="Cancel", fg_color="red", hover_color="#a83232")
+        else:
+            if not hasattr(self, 'thread'):
+                return
+            elif self.thread and self.thread.is_alive():
+                self.cancel_conversion()
+                self.start_stop_button.configure(text="Start Conversion", fg_color="#7289da", hover_color="#5b6eae")
 
     def browse_svs(self):
         browse_input(self.svs_isDir, self.svs_isFile, self.svs_path, "SVS")
@@ -201,8 +206,7 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
         self.thread.start()
 
     def cancel_conversion(self):
-        if self.thread and self.thread.is_alive():
-            self.stop_event.set()  # Set stop flag
+        self.stop_event.set()  # Set stop flag
 
     def convert_svs_to_jpg_tiles_parallel(self, input_path, output_dir, tile_size=1024, level=0, max_workers=4):
         """
@@ -229,10 +233,6 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
 
         try:
             for svs_file in svs_files:
-                if self.stop_event.is_set():
-                    messagebox.showerror("Conversion Cancelled", "Conversion was cancelled.")
-                    return
-                
                 file_name = os.path.splitext(os.path.basename(svs_file))[0]
                 file_output_dir = os.path.join(output_dir, file_name)
                 os.makedirs(file_output_dir, exist_ok=True)
@@ -259,9 +259,6 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
 
                 # Process tiles in parallel using a thread pool
                 for ty in range(tiles_y):
-                    if self.stop_event.is_set():
-                        messagebox.showerror("Conversion Cancelled", "Conversion was cancelled.")
-                        return
                     for tx in range(tiles_x):
                         if self.stop_event.is_set():
                             messagebox.showerror("Conversion Cancelled", "Conversion was cancelled.")
@@ -307,17 +304,13 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         super().__init__(master, width=960, height=540, corner_radius=10)
         self.configure(fg_color="#2c2f33")  # Background color
 
-        self.grid_columnconfigure(0, minsize=150)
-        self.grid_columnconfigure(1, minsize=300)
-        self.grid_columnconfigure(2, minsize=100)
-
         # Title
         self.title_label = ctk.CTkLabel(self, text="Analyze Images", font=("Arial", 20, "bold"))
-        self.title_label.grid(row=0, column=0, columnspan=3, pady=(20, 10), sticky="n")
+        self.title_label.grid(row=0, column=1, padx=60, pady=(20, 10), sticky="ew")
 
         # JPG Input Section
-        self.jpg_label = ctk.CTkLabel(self, text="JPG Folder".ljust(20), font=("Arial", 14))
-        self.jpg_label.grid(row=1, column=0, padx=10, pady=(10, 5), sticky="w")
+        self.jpg_label = ctk.CTkLabel(self, text="JPG Folder", font=("Arial", 14))
+        self.jpg_label.grid(row=1, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
 
         self.jpg_path = create_path_input(self, width=300, row=1, column=1)
         self.select_jpg = create_button(self, text="Browse", row=1, column=2, command=self.browse_jpg)
@@ -326,8 +319,8 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.isGPU = create_checkbox(master=self.checkbox_frame_jpg, text="GPU", command=self.device_checkbox_toggle, row=0, column=1)
 
         # Output Section
-        self.output_label = ctk.CTkLabel(self, text="AI Output Destination".ljust(20), font=("Arial", 14))
-        self.output_label.grid(row=3, column=0, padx=10, pady=(10, 5), sticky="w")
+        self.output_label = ctk.CTkLabel(self, text="AI Output", font=("Arial", 14))
+        self.output_label.grid(row=3, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
 
         self.output_path = create_path_input(self, width=300, row=3, column=1)
         self.select_output = create_button(self, text="Browse", row=3, column=2, command=self.browse_output)
@@ -338,15 +331,17 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.jpg_isDir = create_checkbox(master=None, text="isDir", command=None, row=0, column=0, selected=True)
         self.jpg_isDir.grid_forget()
 
-        # Start Conversion Button
-        self.start_button = create_button(self, text="Start Analyzing", row=5, column=1, pady=20, command=self.threading_analyze)
-        self.start_button.configure(fg_color="#7289da", hover_color="#5b6eae")
-
         # Console Output Area
-        self.console_output = ctk.CTkTextbox(self, height=120, wrap="word", font=("Courier", 12))
-        self.console_output.grid(row=6, column=0, columnspan=3, padx=20, pady=20, sticky="nsew")
+        self.console_output = ctk.CTkTextbox(self, height=150, wrap="word", font=("Courier", 12))
+        self.console_output.grid(row=5, column=0, columnspan=3, padx=(120, 10), pady=20, sticky="ew")
         self.console_output.configure(state="disabled")
         log_to_console(self.console_output, "If GPU can't be enabled, it means CUDA isn't detected in system.")
+
+        # Flag to keep track of start/stop events
+        self.stop_event = threading.Event()
+
+        # Start/Cancel Button
+        self.start_stop_button = create_button(self, text="Start Analyzing", row=6, column=2, command=self.start_stop_toggle)
 
         # Select CPU as default first
         self.device = torch.device("cpu")
@@ -362,15 +357,49 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
         self.isGPU.configure(state="disabled" if not torch.cuda.is_available() or self.isCPU.get() else "normal")
         self.isCPU.configure(state="disabled" if self.isGPU.get() else "normal")
 
+    def start_stop_toggle(self):
+        if self.start_stop_button.cget("text") == "Start Analyzing":
+            self.threading_analyze()
+            if not hasattr(self, 'thread'):
+                pass
+            else: #if self.thread exist, only change state to cancel
+                self.start_stop_button.configure(text="Cancel", fg_color="red", hover_color="#a83232")
+        else:
+            if not hasattr(self, 'thread'):
+                return
+            elif self.thread and self.thread.is_alive():
+                self.cancel_analyze()
+                self.start_stop_button.configure(text="Start Conversion", fg_color="#7289da", hover_color="#5b6eae")
+
     # To maintain UI responsiveness
     def threading_analyze(self):
+
+        jpg_dir = self.jpg_path.get()
+        output_dir = self.output_path.get()
+
+        if not jpg_dir or not output_dir:
+            messagebox.showerror("Error", "Empty directory is not allowed!")
+            return
+
+        if self.isCPU.get():
+            self.device = torch.device("cpu")
+        elif self.isGPU.get():
+            self.device = torch.device("cuda")
+        else:
+            messagebox.showerror("Error", "Please select either CPU or GPU to process images")
+            return
+
         log_to_console(self.console_output, "Beginning to analyze, please wait patiently..\n\n")
+        self.stop_event.clear()
         self.thread = threading.Thread(
             target=self.start_analyzing,
-            args=(),
+            args=(jpg_dir, output_dir),
             daemon=True
         )
         self.thread.start()
+
+    def cancel_analyze(self):
+        self.stop_event.set()
 
     def load_yolo_model(self):
         yolo_model = YOLO(YOLO_MODEL_PATH)
@@ -434,22 +463,8 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
             confidences, predictions = torch.max(probabilities, dim=1)
         return predictions.cpu().numpy(), confidences.cpu().numpy()
 
-    def start_analyzing(self):
-        jpg_dir = self.jpg_path.get()
-        output_dir = self.output_path.get()
+    def start_analyzing(self, jpg_dir, output_dir):
 
-        if not jpg_dir or not output_dir:
-            messagebox.showerror("Error", "Empty directory is not allowed!")
-            return
-
-        if self.isCPU.get():
-            self.device = torch.device("cpu")
-        elif self.isGPU.get():
-            self.device = torch.device("cuda")
-        else:
-            messagebox.showerror("Error", "Please select either CPU or GPU to process images")
-            return
-        
         os.makedirs(output_dir, exist_ok=True)
         
         CLASS_NAMES = ['abnormal', 'benign', 'normal']
@@ -494,6 +509,9 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
 
             # Filter and annotate detections
             for idx, box in enumerate(boxes_to_draw):
+                if self.stop_event.is_set():
+                    messagebox.showerror("Analyzing Cancelled", "Processing of images has been cancelled.")
+                    return
                 class_idx = predictions[idx]
                 class_confidence = confidences[idx]
                 if class_confidence < RESNET_CONFIDENCE_THRESHOLD:

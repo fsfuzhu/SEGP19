@@ -493,52 +493,50 @@ class SVS_TO_JPG_SCREEN(ctk.CTkFrame):
 
 class analyze_JPG_SCREEN(ctk.CTkFrame):
     def __init__(self, master):
-        print("Current thread (analyze_JPG_SCREEN):", threading.current_thread())
         super().__init__(master, width=960, height=540, corner_radius=10)
-        self.configure(fg_color="#2c2f33")  # Background color
+        self.configure(fg_color="#2c2f33")
 
-        # Title
+        # Title (row 0)
         self.title_label = ctk.CTkLabel(self, text="Analyze Images", font=("Arial", 20, "bold"))
         self.title_label.grid(row=0, column=1, padx=60, pady=(20, 10), sticky="ew")
 
-        # JPG Input Section
+        # JPG Input Section (row 1)
         self.jpg_label = ctk.CTkLabel(self, text="JPG Folder", font=("Arial", 14))
         self.jpg_label.grid(row=1, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
-
         self.jpg_path = create_path_input(self, width=300, row=1, column=1)
         self.select_jpg = create_button(self, text="Browse", row=1, column=2, command=self.browse_jpg)
-        self.checkbox_frame_jpg = create_checkbox_frame(self, row=2, column=1)
-        self.isCPU = create_checkbox(master=self.checkbox_frame_jpg, text="CPU", command=self.device_checkbox_toggle, row=0, column=0, selected=True)
-        self.isGPU = create_checkbox(master=self.checkbox_frame_jpg, text="GPU", command=self.device_checkbox_toggle, row=0, column=1)
 
-        # Output Section
+        # Output Section (row 2)
         self.output_label = ctk.CTkLabel(self, text="AI Output", font=("Arial", 14))
-        self.output_label.grid(row=3, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
+        self.output_label.grid(row=2, column=0, padx=(120, 20), pady=(10, 5), sticky="w")
+        self.output_path = create_path_input(self, width=300, row=2, column=1)
+        self.select_output = create_button(self, text="Browse", row=2, column=2, command=self.browse_output)
 
-        self.output_path = create_path_input(self, width=300, row=3, column=1)
-        self.select_output = create_button(self, text="Browse", row=3, column=2, command=self.browse_output)
-        self.checkbox_frame_output = create_checkbox_frame(self, row=4, column=1)
-        self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir", command=None, row=0, column=0, state="disabled", selected=True)
+        # (Optional) Remove the output_isDir checkbox if you no longer need it
+        # Or, if you still need it, adjust its row accordingly.
+        self.checkbox_frame_output = create_checkbox_frame(self, row=3, column=1)
+        self.output_isDir = create_checkbox(master=self.checkbox_frame_output, text="isDir",
+                                            command=None, row=0, column=0, state="disabled", selected=True)
 
-        # Hidden Variable
+        # Hidden Variable (not displayed)
         self.jpg_isDir = create_checkbox(master=None, text="isDir", command=None, row=0, column=0, selected=True)
         self.jpg_isDir.grid_forget()
 
-        # Console Output Area
+        # Console Output Area (row 4)
         self.console_output = ctk.CTkTextbox(self, height=150, wrap="word", font=("Courier", 12))
-        self.console_output.grid(row=5, column=0, columnspan=3, padx=(120, 10), pady=20, sticky="ew")
+        self.console_output.grid(row=4, column=0, columnspan=3, padx=(120, 10), pady=20, sticky="ew")
         self.console_output.configure(state="disabled")
         log_to_console(self.console_output, "If GPU can't be enabled, it means CUDA isn't detected in system.")
 
         # Flag to keep track of start/stop events
         self.stop_event = threading.Event()
 
-        # Start/Cancel Button
-        self.start_stop_button = create_button(self, text="Start Analyzing", row=6, column=2, command=self.start_stop_toggle)
+        # Start/Cancel Button (row 5)
+        self.start_stop_button = create_button(self, text="Start Analyzing", row=5, column=2, command=self.start_stop_toggle)
 
         # Select CPU as default first
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device_checkbox_toggle()
+        # self.device_checkbox_toggle()
 
     def device_checkbox_toggle(self):
         self.isGPU.configure(state="disabled" if not torch.cuda.is_available() or self.isCPU.get() else "normal")
@@ -559,9 +557,13 @@ class analyze_JPG_SCREEN(ctk.CTkFrame):
             self.start_stop_button.configure(text="Start Analyzing", fg_color="#7289da", hover_color="#5b6eae")
 
     def start_multiprocessing_analyze(self):
-        # For demonstration, using fixed directories:
-        jpg_dir = "/media/nine/HD_1/HD_2_from_seven/Yann/pap_smear/data/jpg_unlabeled_data/AP19"
-        output_dir = "/media/nine/HD_1/HD_2_from_seven/Yann/SEGP19/output"
+        jpg_dir = self.jpg_path.get()
+        output_dir = self.output_path.get()
+
+        if not jpg_dir or not output_dir:
+            messagebox.showerror("Error", "Empty directory is not allowed!")
+            return
+        
         if not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
 

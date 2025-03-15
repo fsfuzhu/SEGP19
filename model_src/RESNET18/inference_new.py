@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pyvips
 from concurrent.futures import ThreadPoolExecutor
+from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 
 # -------------------------------
 # 全局参数设置
@@ -16,13 +17,18 @@ from concurrent.futures import ThreadPoolExecutor
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # 模型文件路径（请根据实际情况调整）
-RESNET_MODEL_PATH = './models/resnet18_model.pth'
+RESNET_MODEL_PATH = './models/resnet18_model_20250301_epoch_16.pth'
 YOLO_MODEL_PATH = './models/yolov8x_model.pt'
+
+# ----To install SAM, please use this command: pip install git+https://github.com/facebookresearch/segment-anything.git\
+# --- To download the model from this link: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+SAM_MODEL_PATH = './models/sam_vit_h_4b8939.pth'
 
 # 输入 SVS 文件存放目录
 INFER_IMAGES_DIR = './images'
+INFER_IMAGES_DIR = '/media/nine/HD_1/HD_2_from_seven/Yann/pap_smear/data/svs_data/'
 # 输出结果目录（分类后细胞图像将分别存放到对应类别文件夹）
-OUTPUT_DIR = './outputs'
+OUTPUT_DIR = './output'
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # 检测阈值
@@ -30,11 +36,10 @@ YOLO_CONFIDENCE_THRESHOLD = 0.5  # 根据实际情况调整
 RESNET_CONFIDENCE_THRESHOLD = 0.0
 
 # 细胞类别及标注颜色
-CLASS_NAMES = ['abnormal', 'benign', 'normal']
+CLASS_NAMES = ['abnormal', 'normal']
 CLASS_COLOURS = {
     "normal": (100, 131, 54),
     "abnormal": (28, 32, 190),
-    "benign":  (204, 102, 0),
 }
 
 # 瓷砖（tile）参数：
@@ -49,7 +54,17 @@ def load_yolo_model(model_path):
     yolo_model = YOLO(model_path)
     return yolo_model
 
-def load_resnet_model(model_path, num_classes=3):
+def load_sam_model(sam_checkpoint, model_type="vit_h"):
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam.to(device=device)
+    mask_generator = SamAutomaticMaskGenerator(
+        model=sam,
+        pred_iou_thresh = 0.7,
+        stability_score_thresh = 0.95
+    )
+    return mask_generator
+
+def load_resnet_model(model_path, num_classes=2):
     model = resnet18(weights=None)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
     model.load_state_dict(torch.load(model_path, map_location=device))
@@ -68,7 +83,7 @@ def preprocess_cell_image(cell_image):
     return preprocess(cell_image)
 
 # YOLO检测：输入为 BGR 格式的 numpy 数组图像
-def detect_cells(yolo_model, image):
+def yolo_detect_cells(yolo_model, image):
     results = yolo_model.predict(source=image, save=False)
     boxes = []
     for result in results:
@@ -83,6 +98,82 @@ def detect_cells(yolo_model, image):
             if conf > YOLO_CONFIDENCE_THRESHOLD:
                 boxes.append({'bbox': [x1, y1, x2, y2]})
     return boxes
+
+def sam_detect_cells(image, anns, padding=0):
+    """
+    Given an image and a list of annotations, this function will return a list of bounding boxes
+    for each annotation that is not completely contained within another annotation.
+    
+    Args:
+        image: The image as a numpy array.
+        anns: A list of annotations, where each annotation is a dictionary with a 'segmentation' key
+              that contains a binary mask.
+        padding: The number of pixels to pad around each bounding box.
+        
+    Returns:
+        A list of bounding boxes, where each bounding box is a list of four integers: [x_min, y_min, x_max, y_max].
+    """
+    # First, compute bounding boxes for each annotation.
+    sorted_anns = sorted(anns, key=lambda x: x['area'])
+    filtered_anns = sorted_anns
+    filtered_anns = [sorted_anns[-1]] # Append the last (largest) mask first, since no other mask can be nested inside it
+
+    for i, ann in enumerate(sorted_anns[:-1]):  # Iterate up to second-to-last
+        nested = False
+        bbox_i = ann['segmentation']
+        for j in range(i+1, len(sorted_anns)):
+            bbox_j = sorted_anns[j]['segmentation']
+
+            # Nested mask check using XOR
+            if np.all(np.logical_and(bbox_i, np.logical_not(bbox_j)) == 0):  # Check for all zeros
+                nested = True
+                break
+        if not nested:
+            filtered_anns.append(ann)
+
+    image_size = image.shape[0] * image.shape[1]
+    boxes = []  # Each element will be ((x_min, y_min, x_max, y_max))
+    for ann in filtered_anns:
+        mask = ann['segmentation']
+        coords = np.column_stack(np.where(mask))
+        if coords.size == 0:
+            continue
+        
+        y_min, x_min = coords.min(axis=0)
+        y_max, x_max = coords.max(axis=0)
+        
+        # Apply padding and ensure coordinates remain within image bounds.
+        y_min = max(y_min - padding, 0)
+        x_min = max(x_min - padding, 0)
+        y_max = min(y_max + padding, image.shape[0] - 1)
+        x_max = min(x_max + padding, image.shape[1] - 1)
+
+        area = (y_max - y_min) * (x_max - x_min)
+        if (area/image_size) < 1/8:  
+            boxes.append((x_min, y_min, x_max, y_max))
+    
+    # Define a helper function to check if one box is contained within another.
+    def is_contained(inner, outer):
+        ix_min, iy_min, ix_max, iy_max = inner
+        ox_min, oy_min, ox_max, oy_max = outer
+        return (ix_min >= ox_min) and (iy_min >= oy_min) and (ix_max <= ox_max) and (iy_max <= oy_max)
+    
+    # Now filter out nested boxes:
+    # We'll only draw a box if it is not completely contained within any other box.
+    final_boxes = []
+    for i, box_i in enumerate(boxes):
+        nested = False
+        for j, box_j in enumerate(boxes):
+            if i == j:
+                continue
+            # If box_i is completely inside box_j, mark it as nested.
+            if is_contained(box_i, box_j):
+                nested = True
+                break
+        if not nested:
+            x1, y1, x2, y2 = box_i
+            final_boxes.append({'bbox': [x1, y1, x2, y2]})
+    return final_boxes
 
 def classify_cells(resnet_model, cell_images):
     cell_tensors = []
@@ -108,11 +199,22 @@ def pyvips_to_numpy(vimage):
 # -------------------------------
 # 处理单个瓷砖（tile）的函数
 # -------------------------------
-def process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, yolo_model, resnet_model):
+def process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, yolo_model=None, sam_model=None):
     # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
     tile_np = pyvips_to_numpy(tile)
     # 在瓷砖上运行 YOLO 检测
-    detections = detect_cells(yolo_model, tile_np)
+    try:
+        if yolo_model:
+            print("using yolo for detection")
+            detections = yolo_detect_cells(yolo_model, tile_np)
+        elif sam_model:
+            print("using sam for detection")
+            masks = sam_model.generate(tile_np)
+            detections = sam_detect_cells(tile_np, masks)
+    except Exception as e:
+        print(f"Failed to detect cells: {e}")
+        return
+
     if not detections:
         return
     for idx, det in enumerate(detections):
@@ -166,7 +268,7 @@ def process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_hei
 # -------------------------------
 # 处理单个 SVS 文件
 # -------------------------------
-def process_svs_file(svs_path, yolo_model, resnet_model, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
+def process_svs_file(svs_path, resnet_model, yolo_model = None, sam_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
     print(f"Processing SVS file: {svs_path}")
     try:
         full_slide = pyvips.Image.new_from_file(svs_path, access='sequential')
@@ -203,21 +305,26 @@ def process_svs_file(svs_path, yolo_model, resnet_model, tile_size=TILE_SIZE, de
             except Exception as e:
                 print(f"Failed to extract tile at ({tx}, {ty}): {e}")
                 continue
-            process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, yolo_model, resnet_model)
+            process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, yolo_model=yolo_model, sam_model=sam_model)
 
 # -------------------------------
 # 主函数：处理目录下所有 SVS 文件
 # -------------------------------
-def test_svs_tiles():
+def test_svs_tiles(cell_detection_model):
     yolo_model = load_yolo_model(YOLO_MODEL_PATH)
     resnet_model = load_resnet_model(RESNET_MODEL_PATH)
+    sam_model = load_sam_model(SAM_MODEL_PATH)
     # 创建各分类输出目录
     for class_name in CLASS_NAMES:
         os.makedirs(os.path.join(OUTPUT_DIR, class_name), exist_ok=True)
     for file in os.listdir(INFER_IMAGES_DIR):
         if file.lower().endswith('.svs'):
             svs_path = os.path.join(INFER_IMAGES_DIR, file)
-            process_svs_file(svs_path, yolo_model, resnet_model)
+            if cell_detection_model == "sam":
+                process_svs_file(svs_path, resnet_model, sam_model=sam_model)
+            else:
+                process_svs_file(svs_path, resnet_model, yolo_model=yolo_model)
 
 if __name__ == '__main__':
-    test_svs_tiles()
+    cell_detection_model = "sam" # "yolo" or "sam"
+    test_svs_tiles(cell_detection_model)

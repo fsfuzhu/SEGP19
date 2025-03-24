@@ -45,6 +45,12 @@ EDGE_MARGIN = 20           # 瓷砖边缘判定阈值（单位：瓷砖图像像
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+# Progress Bar
+TOTAL_TILES = 0
+CURRENT_SVS_TOTAL_TILES = 0
+PROCESSED_TOTAL_TILES = 0
+PROCESSED_CURRENT_SVS_TILES = 0
+
 # UI Related functions
 def create_ctk_frame(master, row, column, columnspan, padx=10, pady=10, sticky="nsew"):
     frame = ctk.CTkFrame(master)
@@ -108,6 +114,34 @@ def load_resnet_model(model_path, num_classes=2):
     model.to(device)
     return model
 
+def get_total_tiles():
+    return TOTAL_TILES
+
+def get_current_svs_total_tiles():
+    return CURRENT_SVS_TOTAL_TILES
+
+def get_processed_total_tiles():
+    return PROCESSED_TOTAL_TILES
+
+def get_processed_current_svs_tiles():
+    return PROCESSED_CURRENT_SVS_TILES
+
+def set_total_tiles(value):
+    global TOTAL_TILES
+    TOTAL_TILES = value
+
+def set_current_svs_total_tiles(value):
+    global CURRENT_SVS_TOTAL_TILES
+    CURRENT_SVS_TOTAL_TILES = value
+
+def set_processed_total_tiles(value):
+    global PROCESSED_TOTAL_TILES
+    PROCESSED_TOTAL_TILES = value
+
+def set_processed_current_svs_tiles(value):
+    global PROCESSED_CURRENT_SVS_TILES
+    PROCESSED_CURRENT_SVS_TILES = value
+
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -141,14 +175,21 @@ class App(ctk.CTk):
         self.start_stop_button = ctk.CTkButton(self, text="Start", command=self.start_stop_toggle, font=("Calibri", 50))
         self.start_stop_button.grid(row=3, column=0, columnspan=2, padx=(40, 10), pady=20, sticky="ew")
         
-        # Progress Bar (row 4)
+        # Progress Bar Frame (row 4)
         self.progress_frame = create_ctk_frame(self, row=4, column=0, columnspan=2, padx=(40, 10), sticky="ew")
         self.progress_label = ctk.CTkLabel(master=self.progress_frame, text="Progress:", font=("Calibri", 20))
         self.progress_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+
+        # Progress Bar
         self.progress_bar = ctk.CTkProgressBar(master=self.progress_frame)
         self.progress_bar.grid(row=0, column=1, padx=(10, 10), pady=10, sticky="ew")
         self.progress_frame.grid_columnconfigure(1, weight=1)
-        self.progress_bar.set(0.3)
+
+        # Percentage Label
+        self.percentage_label = ctk.CTkLabel(master=self.progress_frame, text="0.0%", font=("Calibri", 20))
+        self.percentage_label.grid(row=0, column=2, padx=10, pady=10, sticky="e")
+
+        self.progress_bar.set(0.0)
 
         # Flag to keep track of start/stop events
         self.stop_event = threading.Event()
@@ -198,6 +239,14 @@ class App(ctk.CTk):
     def cancel_analyze(self):
         self.stop_event.set()  # Set stop flag
 
+    def update_progress_bar_current(self, reset_flag=False):
+        if reset_flag:
+            self.progress_bar.set(0.0)
+            self.percentage_label.configure(text="0.0%")
+        else:
+            self.progress_bar.set(get_processed_current_svs_tiles() / get_current_svs_total_tiles())
+            self.percentage_label.configure(text=f"{(get_processed_current_svs_tiles() / get_current_svs_total_tiles()) * 100:.1f}%")
+            print( (get_processed_current_svs_tiles() / get_current_svs_total_tiles()) * 100)
 
     # Logic
     def test_svs_tiles(self, svs_dir, output_dir, cell_detection_model):
@@ -210,6 +259,7 @@ class App(ctk.CTk):
         for file in os.listdir(svs_dir):
             if file.lower().endswith('.svs'):
                 svs_path = os.path.join(svs_dir, file)
+                # set_current_svs_total_tiles(0) # Soft reset
                 if cell_detection_model == "sam":
                     self.process_svs_file(svs_path, resnet_model, output_dir, sam_model=sam_model)
                     print("hi sam")
@@ -218,7 +268,7 @@ class App(ctk.CTk):
                     print("hi yolo")
                 else:
                     return
-                
+
     def process_svs_file(self, svs_path, resnet_model, output_dir, yolo_model = None, sam_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
         print(f"Processing SVS file: {svs_path}")
         try:
@@ -241,6 +291,7 @@ class App(ctk.CTk):
         tiles_x = (level_width + tile_size - 1) // tile_size
         tiles_y = (level_height + tile_size - 1) // tile_size
         print(f"Dividing slide into {tiles_x} x {tiles_y} = {tiles_x * tiles_y} tiles")
+        set_current_svs_total_tiles(tiles_x * tiles_y)
         # 遍历所有瓷砖（此处采用顺序处理，也可使用线程池并行处理）
         for ty in range(tiles_y):
             for tx in range(tiles_x):
@@ -255,8 +306,12 @@ class App(ctk.CTk):
                     tile = full_slide.crop(x_full, y_full, w_full, h_full).resize(1/scale)
                 except Exception as e:
                     print(f"Failed to extract tile at ({tx}, {ty}): {e}")
+                    set_current_svs_total_tiles(get_current_svs_total_tiles() - 1)
+                    self.update_progress_bar_current()
                     continue
                 self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=yolo_model, sam_model=sam_model)
+
+        self.start_stop_button.configure(text="Start", fg_color="#7289da", hover_color="#5b6eae")
 
     def process_tile(self, tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=None, sam_model=None):
         # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
@@ -265,6 +320,7 @@ class App(ctk.CTk):
         try:
             if yolo_model:
                 print("using yolo for detection")
+                print(f"curernt total tiles: {get_current_svs_total_tiles()}")
                 detections = self.yolo_detect_cells(yolo_model, tile_np)
             elif sam_model:
                 print("using sam for detection")
@@ -312,17 +368,20 @@ class App(ctk.CTk):
                 continue
             cell_np = self.pyvips_to_numpy(cell_region)
             preds, confs = self.classify_cells(resnet_model, [cell_np])
-            class_idx = preds[0]
-            conf = confs[0]
-            class_name = CLASS_NAMES[class_idx]
-            label = f"{class_name}: {conf:.2f}"
-            cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
-            out_folder = os.path.join(output_dir, class_name)
-            os.makedirs(out_folder, exist_ok=True)
-            out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
-            out_path = os.path.join(out_folder, out_filename)
-            cv2.imwrite(out_path, cell_np)
-            print(f"Saved cell image: {out_path}")
+            # class_idx = preds[0]
+            # conf = confs[0]
+            # class_name = CLASS_NAMES[class_idx]
+            # label = f"{class_name}: {conf:.2f}"
+            # cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
+            # out_folder = os.path.join(output_dir, class_name)
+            # os.makedirs(out_folder, exist_ok=True)
+            # out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
+            # out_path = os.path.join(out_folder, out_filename)
+            # cv2.imwrite(out_path, cell_np)
+            # print(f"Saved cell image: {out_path}")
+
+        set_processed_current_svs_tiles(get_processed_current_svs_tiles() + 1)
+        self.update_progress_bar_current()
 
     def pyvips_to_numpy(self, vimage):
         img = vimage.write_to_memory()
@@ -427,6 +486,10 @@ class App(ctk.CTk):
     def classify_cells(self, resnet_model, cell_images):
         cell_tensors = []
         for cell_img in cell_images:
+            if self.stop_event.is_set():
+                messagebox.showerror("Analyzing Cancelled", "Processing of images has been cancelled.")
+                self.update_progress_bar_current(reset_flag=True)
+                return
             processed = self.preprocess_cell_image(cell_img)
             cell_tensors.append(processed)
         cell_batch = torch.stack(cell_tensors).to(device)

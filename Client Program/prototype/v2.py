@@ -46,10 +46,10 @@ EDGE_MARGIN = 20           # 瓷砖边缘判定阈值（单位：瓷砖图像像
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Progress Bar
-TOTAL_TILES = 0
 CURRENT_SVS_TOTAL_TILES = 0
-PROCESSED_TOTAL_TILES = 0
 PROCESSED_CURRENT_SVS_TILES = 0
+TOTAL_SVS_FILE_COUNT = 0
+PROCESSED_SVS_FILE_COUNT = 0
 
 # UI Related functions
 def create_ctk_frame(master, row, column, columnspan, padx=10, pady=10, sticky="nsew"):
@@ -114,33 +114,33 @@ def load_resnet_model(model_path, num_classes=2):
     model.to(device)
     return model
 
-def get_total_tiles():
-    return TOTAL_TILES
-
 def get_current_svs_total_tiles():
     return CURRENT_SVS_TOTAL_TILES
-
-def get_processed_total_tiles():
-    return PROCESSED_TOTAL_TILES
 
 def get_processed_current_svs_tiles():
     return PROCESSED_CURRENT_SVS_TILES
 
-def set_total_tiles(value):
-    global TOTAL_TILES
-    TOTAL_TILES = value
+def get_total_svs_file_count():
+    return TOTAL_SVS_FILE_COUNT
+
+def get_processed_svs_file_count():
+    return PROCESSED_SVS_FILE_COUNT
 
 def set_current_svs_total_tiles(value):
     global CURRENT_SVS_TOTAL_TILES
     CURRENT_SVS_TOTAL_TILES = value
 
-def set_processed_total_tiles(value):
-    global PROCESSED_TOTAL_TILES
-    PROCESSED_TOTAL_TILES = value
-
 def set_processed_current_svs_tiles(value):
     global PROCESSED_CURRENT_SVS_TILES
     PROCESSED_CURRENT_SVS_TILES = value
+
+def set_total_svs_file_count(value):
+    global TOTAL_SVS_FILE_COUNT
+    TOTAL_SVS_FILE_COUNT = value
+
+def set_processed_svs_file_count(value):
+    global PROCESSED_SVS_FILE_COUNT
+    PROCESSED_SVS_FILE_COUNT = value
 
 class App(ctk.CTk):
     def __init__(self):
@@ -153,7 +153,7 @@ class App(ctk.CTk):
 
         # Grid config
         self.grid_columnconfigure(2, weight=1)
-        self.grid_rowconfigure(5, weight=1)
+        self.grid_rowconfigure(6, weight=1)
 
         # SVS Input Section (row 0)
         self.select_svs_path = create_button(self, text="Browse SVS", row=0, column=0, padx=40, pady=20, command=self.browse_svs)
@@ -175,21 +175,37 @@ class App(ctk.CTk):
         self.start_stop_button = ctk.CTkButton(self, text="Start", command=self.start_stop_toggle, font=("Calibri", 50))
         self.start_stop_button.grid(row=3, column=0, columnspan=2, padx=(40, 10), pady=20, sticky="ew")
         
-        # Progress Bar Frame (row 4)
-        self.progress_frame = create_ctk_frame(self, row=4, column=0, columnspan=2, padx=(40, 10), sticky="ew")
-        self.progress_label = ctk.CTkLabel(master=self.progress_frame, text="Progress:", font=("Calibri", 20))
-        self.progress_label.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+        # Progress Bar Frame Current (row 4)
+        self.progress_frame_current = create_ctk_frame(self, row=4, column=0, columnspan=2, padx=(40, 10), sticky="ew")
+        self.progress_label_current = ctk.CTkLabel(master=self.progress_frame_current, text="Current Progress:", font=("Calibri", 20))
+        self.progress_label_current.grid(row=0, column=0, padx=10, pady=10, sticky="w")
 
-        # Progress Bar
-        self.progress_bar = ctk.CTkProgressBar(master=self.progress_frame)
-        self.progress_bar.grid(row=0, column=1, padx=(10, 10), pady=10, sticky="ew")
-        self.progress_frame.grid_columnconfigure(1, weight=1)
+        # Progress Bar (Current)
+        self.progress_bar_current = ctk.CTkProgressBar(master=self.progress_frame_current)
+        self.progress_bar_current.grid(row=0, column=1, padx=(10, 10), pady=10, sticky="e")
+        self.progress_frame_current.grid_columnconfigure(1, weight=1)
 
-        # Percentage Label
-        self.percentage_label = ctk.CTkLabel(master=self.progress_frame, text="0.0%", font=("Calibri", 20))
-        self.percentage_label.grid(row=0, column=2, padx=10, pady=10, sticky="e")
+        # Percentage Label (Current)
+        self.percentage_label_current = ctk.CTkLabel(master=self.progress_frame_current, text="0.0%", font=("Calibri", 20))
+        self.percentage_label_current.grid(row=0, column=2, padx=10, pady=10, sticky="ns")
 
-        self.progress_bar.set(0.0)
+        self.progress_bar_current.set(0.0)
+
+        # Progress Bar Frame Total (row 5)
+        self.progress_frame_total = create_ctk_frame(self, row=5, column=0, columnspan=2, padx=(40, 10), sticky="ew")
+        self.progress_label_total = ctk.CTkLabel(master=self.progress_frame_total, text="Total Progress:", font=("Calibri", 20))
+        self.progress_label_total.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+
+        # Progress Bar (Total)
+        self.progress_bar_total = ctk.CTkProgressBar(master=self.progress_frame_total)
+        self.progress_bar_total.grid(row=0, column=1, padx=(10, 10), pady=10, sticky="e")
+        self.progress_frame_total.grid_columnconfigure(1, weight=1)
+
+        # Percentage Label (Total)
+        self.percentage_label_total = ctk.CTkLabel(master=self.progress_frame_total, text="0.0%", font=("Calibri", 20))
+        self.percentage_label_total.grid(row=0, column=2, padx=10, pady=10, sticky="ns")
+
+        self.progress_bar_total.set(0.0)
 
         # Flag to keep track of start/stop events
         self.stop_event = threading.Event()
@@ -235,18 +251,28 @@ class App(ctk.CTk):
             daemon = True
         )
         self.thread.start()
+        self.update_progress_bar(reset_flag=True)
 
     def cancel_analyze(self):
         self.stop_event.set()  # Set stop flag
 
-    def update_progress_bar_current(self, reset_flag=False):
+    def update_progress_bar(self, reset_flag=False):
         if reset_flag:
-            self.progress_bar.set(0.0)
-            self.percentage_label.configure(text="0.0%")
+            self.progress_bar_current.set(0.0)
+            self.progress_bar_total.set(0.0)
+            self.percentage_label_current.configure(text="0.0%")
+            self.percentage_label_total.configure(text="0.0%")
+            set_current_svs_total_tiles(0)
+            set_processed_current_svs_tiles(0)
+            set_processed_svs_file_count(0)
+            set_total_svs_file_count(0)
         else:
-            self.progress_bar.set(get_processed_current_svs_tiles() / get_current_svs_total_tiles())
-            self.percentage_label.configure(text=f"{(get_processed_current_svs_tiles() / get_current_svs_total_tiles()) * 100:.1f}%")
-            print( (get_processed_current_svs_tiles() / get_current_svs_total_tiles()) * 100)
+            current_progress = get_processed_current_svs_tiles() / get_current_svs_total_tiles()
+            total_progress = (current_progress + (get_processed_svs_file_count() * 1)) / get_total_svs_file_count()
+            self.progress_bar_current.set(current_progress)
+            self.progress_bar_total.set(total_progress)
+            self.percentage_label_current.configure(text=f"{current_progress*100:.1f}%")
+            self.percentage_label_total.configure(text=f"{total_progress*100:.1f}%")
 
     # Logic
     def test_svs_tiles(self, svs_dir, output_dir, cell_detection_model):
@@ -256,18 +282,23 @@ class App(ctk.CTk):
         # 创建各分类输出目录
         for class_name in CLASS_NAMES:
             os.makedirs(os.path.join(output_dir, class_name), exist_ok=True)
+        set_total_svs_file_count(sum(file.lower().endswith('.svs') for file in os.listdir(svs_dir)))
         for file in os.listdir(svs_dir):
             if file.lower().endswith('.svs'):
                 svs_path = os.path.join(svs_dir, file)
-                # set_current_svs_total_tiles(0) # Soft reset
+                set_current_svs_total_tiles(0)
+                set_processed_current_svs_tiles(0)
                 if cell_detection_model == "sam":
                     self.process_svs_file(svs_path, resnet_model, output_dir, sam_model=sam_model)
                     print("hi sam")
                 elif cell_detection_model == "yolo":
                     self.process_svs_file(svs_path, resnet_model, output_dir, yolo_model=yolo_model)
+                    set_processed_svs_file_count(get_processed_svs_file_count() + 1)
                     print("hi yolo")
                 else:
                     return
+                
+        self.start_stop_button.configure(text="Start", fg_color="#7289da", hover_color="#5b6eae")
 
     def process_svs_file(self, svs_path, resnet_model, output_dir, yolo_model = None, sam_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
         print(f"Processing SVS file: {svs_path}")
@@ -307,81 +338,81 @@ class App(ctk.CTk):
                 except Exception as e:
                     print(f"Failed to extract tile at ({tx}, {ty}): {e}")
                     set_current_svs_total_tiles(get_current_svs_total_tiles() - 1)
-                    self.update_progress_bar_current()
+                    self.update_progress_bar()
                     continue
                 self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=yolo_model, sam_model=sam_model)
 
-        self.start_stop_button.configure(text="Start", fg_color="#7289da", hover_color="#5b6eae")
+        
 
     def process_tile(self, tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=None, sam_model=None):
-        # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
-        tile_np = self.pyvips_to_numpy(tile)
-        # 在瓷砖上运行 YOLO 检测
-        try:
-            if yolo_model:
-                print("using yolo for detection")
-                print(f"curernt total tiles: {get_current_svs_total_tiles()}")
-                detections = self.yolo_detect_cells(yolo_model, tile_np)
-            elif sam_model:
-                print("using sam for detection")
-                masks = sam_model.generate(tile_np)
-                detections = self.sam_detect_cells(tile_np, masks)
-        except Exception as e:
-            print(f"Failed to detect cells: {e}")
-            return
+        # # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
+        # tile_np = self.pyvips_to_numpy(tile)
+        # # 在瓷砖上运行 YOLO 检测
+        # try:
+        #     if yolo_model:
+        #         print("using yolo for detection")
+        #         print(f"curernt total tiles: {get_current_svs_total_tiles()}")
+        #         detections = self.yolo_detect_cells(yolo_model, tile_np)
+        #     elif sam_model:
+        #         print("using sam for detection")
+        #         masks = sam_model.generate(tile_np)
+        #         detections = self.sam_detect_cells(tile_np, masks)
+        # except Exception as e:
+        #     print(f"Failed to detect cells: {e}")
+        #     return
 
-        if not detections:
-            return
-        for idx, det in enumerate(detections):
-            x1, y1, x2, y2 = det['bbox']
-            # 判断检测框是否接近瓷砖边缘
-            touches_edge = (x1 < EDGE_MARGIN or y1 < EDGE_MARGIN or x2 > (TILE_SIZE - EDGE_MARGIN) or y2 > (TILE_SIZE - EDGE_MARGIN))
-            # 将瓷砖内检测框坐标转换为全分辨率下的全局坐标（level0）：
-            global_x1 = int((tile_origin_x + x1) * scale)
-            global_y1 = int((tile_origin_y + y1) * scale)
-            global_x2 = int((tile_origin_x + x2) * scale)
-            global_y2 = int((tile_origin_y + y2) * scale)
-            margin_full = int(EDGE_MARGIN * scale)
-            # 若检测框在边缘，则以检测中心为基准重新确定裁剪区域
-            if touches_edge:
-                center_x = (global_x1 + global_x2) // 2
-                center_y = (global_y1 + global_y2) // 2
-                box_width = global_x2 - global_x1
-                box_height = global_y2 - global_y1
-                crop_width = box_width + 2 * margin_full
-                crop_height = box_height + 2 * margin_full
-                new_x1 = max(0, center_x - crop_width // 2)
-                new_y1 = max(0, center_y - crop_height // 2)
-                new_x2 = min(full_width, new_x1 + crop_width)
-                new_y2 = min(full_height, new_y1 + crop_height)
-            else:
-                new_x1 = max(0, global_x1 - margin_full)
-                new_y1 = max(0, global_y1 - margin_full)
-                new_x2 = min(full_width, global_x2 + margin_full)
-                new_y2 = min(full_height, global_y2 + margin_full)
-            crop_w = new_x2 - new_x1
-            crop_h = new_y2 - new_y1
-            try:
-                cell_region = full_slide.crop(new_x1, new_y1, crop_w, crop_h)
-            except Exception as e:
-                print(f"Failed to crop cell region: {e}")
-                continue
-            cell_np = self.pyvips_to_numpy(cell_region)
-            preds, confs = self.classify_cells(resnet_model, [cell_np])
-            # class_idx = preds[0]
-            # conf = confs[0]
-            # class_name = CLASS_NAMES[class_idx]
-            # label = f"{class_name}: {conf:.2f}"
-            # cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
-            # out_folder = os.path.join(output_dir, class_name)
-            # os.makedirs(out_folder, exist_ok=True)
-            # out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
-            # out_path = os.path.join(out_folder, out_filename)
-            # cv2.imwrite(out_path, cell_np)
-            # print(f"Saved cell image: {out_path}")
+        # if not detections:
+        #     return
+        # for idx, det in enumerate(detections):
+        #     x1, y1, x2, y2 = det['bbox']
+        #     # 判断检测框是否接近瓷砖边缘
+        #     touches_edge = (x1 < EDGE_MARGIN or y1 < EDGE_MARGIN or x2 > (TILE_SIZE - EDGE_MARGIN) or y2 > (TILE_SIZE - EDGE_MARGIN))
+        #     # 将瓷砖内检测框坐标转换为全分辨率下的全局坐标（level0）：
+        #     global_x1 = int((tile_origin_x + x1) * scale)
+        #     global_y1 = int((tile_origin_y + y1) * scale)
+        #     global_x2 = int((tile_origin_x + x2) * scale)
+        #     global_y2 = int((tile_origin_y + y2) * scale)
+        #     margin_full = int(EDGE_MARGIN * scale)
+        #     # 若检测框在边缘，则以检测中心为基准重新确定裁剪区域
+        #     if touches_edge:
+        #         center_x = (global_x1 + global_x2) // 2
+        #         center_y = (global_y1 + global_y2) // 2
+        #         box_width = global_x2 - global_x1
+        #         box_height = global_y2 - global_y1
+        #         crop_width = box_width + 2 * margin_full
+        #         crop_height = box_height + 2 * margin_full
+        #         new_x1 = max(0, center_x - crop_width // 2)
+        #         new_y1 = max(0, center_y - crop_height // 2)
+        #         new_x2 = min(full_width, new_x1 + crop_width)
+        #         new_y2 = min(full_height, new_y1 + crop_height)
+        #     else:
+        #         new_x1 = max(0, global_x1 - margin_full)
+        #         new_y1 = max(0, global_y1 - margin_full)
+        #         new_x2 = min(full_width, global_x2 + margin_full)
+        #         new_y2 = min(full_height, global_y2 + margin_full)
+        #     crop_w = new_x2 - new_x1
+        #     crop_h = new_y2 - new_y1
+        #     try:
+        #         cell_region = full_slide.crop(new_x1, new_y1, crop_w, crop_h)
+        #     except Exception as e:
+        #         print(f"Failed to crop cell region: {e}")
+        #         continue
+        #     cell_np = self.pyvips_to_numpy(cell_region)
+        #     preds, confs = self.classify_cells(resnet_model, [cell_np])
+        #     # class_idx = preds[0]
+        #     # conf = confs[0]
+        #     # class_name = CLASS_NAMES[class_idx]
+        #     # label = f"{class_name}: {conf:.2f}"
+        #     # cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
+        #     # out_folder = os.path.join(output_dir, class_name)
+        #     # os.makedirs(out_folder, exist_ok=True)
+        #     # out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
+        #     # out_path = os.path.join(out_folder, out_filename)
+        #     # cv2.imwrite(out_path, cell_np)
+        #     # print(f"Saved cell image: {out_path}")
 
         set_processed_current_svs_tiles(get_processed_current_svs_tiles() + 1)
-        self.update_progress_bar_current()
+        self.update_progress_bar()
 
     def pyvips_to_numpy(self, vimage):
         img = vimage.write_to_memory()
@@ -488,7 +519,7 @@ class App(ctk.CTk):
         for cell_img in cell_images:
             if self.stop_event.is_set():
                 messagebox.showerror("Analyzing Cancelled", "Processing of images has been cancelled.")
-                self.update_progress_bar_current(reset_flag=True)
+                self.update_progress_bar(reset_flag=True)
                 return
             processed = self.preprocess_cell_image(cell_img)
             cell_tensors.append(processed)

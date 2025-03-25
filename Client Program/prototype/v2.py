@@ -254,6 +254,7 @@ class App(ctk.CTk):
 
     # Logic
     def test_svs_tiles(self, svs_dir, output_dir):
+        self.cell_counts = {}
         yolo_model = load_yolo_model(YOLO_MODEL_PATH)
         resnet_model = load_resnet_model(RESNET_MODEL_PATH)
         set_total_svs_file_count(sum(file.lower().endswith('.svs') for file in os.listdir(svs_dir)))
@@ -267,12 +268,16 @@ class App(ctk.CTk):
                     os.makedirs(os.path.join(file_output_dir, class_name), exist_ok=True)
                 set_current_svs_total_tiles(0)
                 set_processed_current_svs_tiles(0)
-                self.process_svs_file(svs_path, resnet_model, file_output_dir, yolo_model=yolo_model)
+                self.cell_counts[file_name] = {"normal": 0, "abnormal": 0}
+                self.process_svs_file(svs_path, resnet_model, file_output_dir, file_name, yolo_model=yolo_model)
                 set_processed_svs_file_count(get_processed_svs_file_count() + 1)
+                print(f"Normal = {self.cell_counts[file_name]['normal']}, Abnormal = {self.cell_counts[file_name]['abnormal']}")
+                print(f"Cell Tiles Total: {get_current_svs_total_tiles()}")
+                print(f"Cell Tiles Processed: {get_processed_current_svs_tiles()}")
                 
         self.start_stop_button.configure(text="Start", fg_color="#7289da", hover_color="#5b6eae")
 
-    def process_svs_file(self, svs_path, resnet_model, output_dir, yolo_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
+    def process_svs_file(self, svs_path, resnet_model, output_dir, file_name, yolo_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
         print(f"Processing SVS file: {svs_path}")
         try:
             full_slide = pyvips.Image.new_from_file(svs_path, access='sequential')
@@ -314,10 +319,12 @@ class App(ctk.CTk):
                     print(f"Failed to extract tile at ({tx}, {ty}): {e}")
                     set_current_svs_total_tiles(get_current_svs_total_tiles() - 1)
                     self.update_progress_bar()
+                    print(f"Processed Tiles: {get_processed_current_svs_tiles()}")
+                    print(f"Total Tiles non-corrupted: {get_current_svs_total_tiles()}")
                     continue
-                self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=yolo_model)
+                self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, file_name, output_dir, yolo_model=yolo_model)
 
-    def process_tile(self, tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=None):
+    def process_tile(self, tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, file_name, output_dir, yolo_model=None):
         # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
         tile_np = self.pyvips_to_numpy(tile)
         # 在瓷砖上运行 YOLO 检测
@@ -328,6 +335,8 @@ class App(ctk.CTk):
             return
 
         if not detections:
+            set_processed_current_svs_tiles(get_processed_current_svs_tiles() + 1)
+            self.update_progress_bar()
             return
         for idx, det in enumerate(detections):
             x1, y1, x2, y2 = det['bbox']
@@ -367,6 +376,10 @@ class App(ctk.CTk):
             preds, confs = self.classify_cells(resnet_model, [cell_np])
             class_idx = preds[0]
             conf = confs[0]
+            if class_idx == 0:
+                self.cell_counts[file_name]["abnormal"] += 1
+            elif class_idx == 1:
+                self.cell_counts[file_name]["normal"] += 1
             class_name = CLASS_NAMES[class_idx]
             label = f"{class_name}: {conf:.2f}"
 

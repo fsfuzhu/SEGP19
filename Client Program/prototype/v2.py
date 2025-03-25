@@ -30,6 +30,10 @@ CLASS_COLOURS = {
     "abnormal": (28, 32, 190),
 }
 
+# Cell Count
+NORMAL_TOTAL = 0
+ABNORMAL_TOTAL = 0
+
 # 瓷砖（tile）参数：
 TILE_SIZE = 1024           # 在检测级别下，每个瓷砖尺寸（单位像素）
 DETECTION_LEVEL = 1        # 用于检测的图像级别（一般低于 0 级可大幅降低尺寸）
@@ -64,22 +68,15 @@ def create_button(master, text, row, column, command=None, padx=10, pady=10):
     button.grid(row=row, column=column, padx=padx, pady=pady)
     return button
 
-def browse_dialog(dialog_type, filetypes=None):
+def browse_dialog(dialog_type, dialog_title, filetypes=None):
     if dialog_type == "directory":
-        return filedialog.askdirectory()
+        return filedialog.askdirectory(title=dialog_title)
     elif dialog_type == "file":
-        return filedialog.askopenfilename(filetypes=filetypes)
+        return filedialog.askopenfilename(filetypes=filetypes, title=dialog_title)
     return None
 
-def browse_input_directory(pathDialog):
-    if True: # if statement simplified
-        selected_path = browse_dialog("directory")
-    if selected_path:
-        pathDialog.delete(0, tk.END)
-        pathDialog.insert(0, selected_path)
-
-def browse_output_directory(pathDialog):
-    selected_path = browse_dialog("directory")
+def browse_directory(pathDialog, dialogTitle):
+    selected_path = browse_dialog("directory", dialogTitle)
     if selected_path:
         pathDialog.delete(0, tk.END)
         pathDialog.insert(0, selected_path)
@@ -96,6 +93,12 @@ def load_resnet_model(model_path, num_classes=2):
     model.to(device)
     return model
 
+def get_abnormal_total():
+    return ABNORMAL_TOTAL
+
+def get_normal_total():
+    return NORMAL_TOTAL
+
 def get_current_svs_total_tiles():
     return CURRENT_SVS_TOTAL_TILES
 
@@ -107,6 +110,14 @@ def get_total_svs_file_count():
 
 def get_processed_svs_file_count():
     return PROCESSED_SVS_FILE_COUNT
+
+def set_abnormal_total(value):
+    global ABNORMAL_TOTAL
+    ABNORMAL_TOTAL = value
+
+def set_normal_total(value):
+    global NORMAL_TOTAL
+    NORMAL_TOTAL = value
 
 def set_current_svs_total_tiles(value):
     global CURRENT_SVS_TOTAL_TILES
@@ -194,13 +205,12 @@ class App(ctk.CTk):
 
 
     def browse_svs(self):
-        browse_input_directory(self.svs_path)
+        browse_directory(self.svs_path, "Select SVS Folder")
 
     def browse_output(self):
-        browse_output_directory(self.jpg_path)
+        browse_directory(self.jpg_path, "Select Output Folder")
 
     def start_stop_toggle(self):
-        print(self.radio_var.get())
         if self.start_stop_button.cget("text") == "Start":
             self.start_multiprocessing_analyze()
             if not hasattr(self, 'thread'):
@@ -281,7 +291,7 @@ class App(ctk.CTk):
         try:
             full_slide = pyvips.Image.new_from_file(svs_path, access='sequential')
         except Exception as e:
-            print(f"Failed to open SVS file: {e}")
+            messagebox.showerror("SVS Error", f"Failed to open SVS file: {e}")
             return
         # 获取指定检测级别下的 downsample 因子（相对于 level0）
         try:
@@ -325,7 +335,7 @@ class App(ctk.CTk):
         try:
             detections = self.yolo_detect_cells(yolo_model, tile_np)
         except Exception as e:
-            print(f"Failed to detect cells: {e}")
+            messagebox.showerror("Cell Detection Error", f"Failed to detect cells: {e}")
             return
 
         if not detections:
@@ -368,6 +378,10 @@ class App(ctk.CTk):
             preds, confs = self.classify_cells(resnet_model, [cell_np])
             class_idx = preds[0]
             conf = confs[0]
+            if class_idx == 0:
+                set_abnormal_total(get_abnormal_total() + 1)
+            elif class_idx == 1:
+                set_normal_total(get_normal_total() + 1)
             class_name = CLASS_NAMES[class_idx]
             label = f"{class_name}: {conf:.2f}"
 

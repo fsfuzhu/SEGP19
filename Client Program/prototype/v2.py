@@ -230,6 +230,10 @@ class App(ctk.CTk):
     def cancel_analyze(self):
         self.stop_event.set()  # Set stop flag
 
+    def cancel_task(self):
+        messagebox.showerror("Analyzing Cancelled", "Processing of images has been cancelled.")
+        self.update_progress_bar(reset_flag=True)
+
     def update_progress_bar(self, reset_flag=False):
         if reset_flag:
             self.progress_bar_current.set(0.0)
@@ -294,6 +298,9 @@ class App(ctk.CTk):
         # 遍历所有瓷砖（此处采用顺序处理，也可使用线程池并行处理）
         for ty in range(tiles_y):
             for tx in range(tiles_x):
+                if self.stop_event.is_set():
+                    self.cancel_task()
+                    return
                 tile_origin_x = tx * tile_size
                 tile_origin_y = ty * tile_size
                 x_full = int(tile_origin_x * scale)
@@ -403,8 +410,7 @@ class App(ctk.CTk):
         cell_tensors = []
         for cell_img in cell_images:
             if self.stop_event.is_set():
-                messagebox.showerror("Analyzing Cancelled", "Processing of images has been cancelled.")
-                self.update_progress_bar(reset_flag=True)
+                self.cancel_task()
                 return
             processed = self.preprocess_cell_image(cell_img)
             cell_tensors.append(processed)

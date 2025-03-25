@@ -279,20 +279,22 @@ class App(ctk.CTk):
         yolo_model = load_yolo_model(YOLO_MODEL_PATH)
         resnet_model = load_resnet_model(RESNET_MODEL_PATH)
         sam_model = load_sam_model(SAM_MODEL_PATH)
-        # 创建各分类输出目录
-        for class_name in CLASS_NAMES:
-            os.makedirs(os.path.join(output_dir, class_name), exist_ok=True)
         set_total_svs_file_count(sum(file.lower().endswith('.svs') for file in os.listdir(svs_dir)))
         for file in os.listdir(svs_dir):
             if file.lower().endswith('.svs'):
                 svs_path = os.path.join(svs_dir, file)
+                file_name = os.path.splitext(os.path.basename(file))[0]
+                file_output_dir = os.path.join(output_dir, file_name)
+                os.makedirs(output_dir, exist_ok=True)
+                for class_name in CLASS_NAMES:
+                    os.makedirs(os.path.join(file_output_dir, class_name), exist_ok=True)
                 set_current_svs_total_tiles(0)
                 set_processed_current_svs_tiles(0)
                 if cell_detection_model == "sam":
-                    self.process_svs_file(svs_path, resnet_model, output_dir, sam_model=sam_model)
+                    self.process_svs_file(svs_path, resnet_model, file_output_dir, sam_model=sam_model)
                     print("hi sam")
                 elif cell_detection_model == "yolo":
-                    self.process_svs_file(svs_path, resnet_model, output_dir, yolo_model=yolo_model)
+                    self.process_svs_file(svs_path, resnet_model, file_output_dir, yolo_model=yolo_model)
                     set_processed_svs_file_count(get_processed_svs_file_count() + 1)
                     print("hi yolo")
                 else:

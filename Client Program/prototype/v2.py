@@ -12,20 +12,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pyvips
 import threading
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
-import multiprocessing as mp
-from multiprocessing import Process, Queue, Event
-mp.set_start_method('spawn', force=True)
 
 ctk.set_appearance_mode("Dark")  # Modes: "System" (standard), "Dark", "Light"
 ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
 RESNET_MODEL_PATH = './models/resnet18_model_20250301_epoch_16.pth'
 YOLO_MODEL_PATH = './models/yolov8x_model.pt'
-
-# ----To install SAM, please use this command: pip install git+https://github.com/facebookresearch/segment-anything.git\
-# --- To download the model from this link: https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
-SAM_MODEL_PATH = './models/sam_vit_h_4b8939.pth'
 
 # 检测阈值
 YOLO_CONFIDENCE_THRESHOLD = 0.5  # 根据实际情况调整
@@ -96,16 +88,6 @@ def load_yolo_model(model_path):
     yolo_model = YOLO(model_path)
     return yolo_model
 
-def load_sam_model(sam_checkpoint, model_type="vit_h"):
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-    sam.to(device=device)
-    mask_generator = SamAutomaticMaskGenerator(
-        model=sam,
-        pred_iou_thresh = 0.7,
-        stability_score_thresh = 0.95
-    )
-    return mask_generator
-
 def load_resnet_model(model_path, num_classes=2):
     model = resnet18(weights=None)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
@@ -163,13 +145,13 @@ class App(ctk.CTk):
         self.select_output_path = create_button(self, text="JPG Output", row=1, column=0, padx=40, pady=20, command=self.browse_output)
         self.jpg_path = create_path_input(self, width=280, row=1, column=1)
 
-        # Select Basic/Advanced Detection (row 2)
-        self.radio_var = tk.StringVar(value="yolo")
+        # Save/Discard Images (row 2)
+        self.radio_var = tk.BooleanVar(value=True)
         self.radiobutton_frame = create_ctk_frame(self, row=2, column=0, columnspan=2, padx=(40, 10), sticky="ew")
-        self.label_radio_group = ctk.CTkLabel(master=self.radiobutton_frame, text="Model Detection: ", font=("Calibri", 15))
+        self.label_radio_group = ctk.CTkLabel(master=self.radiobutton_frame, text="Save Image to Disk: ", font=("Calibri", 15))
         self.label_radio_group.grid(row=0, column=0, padx=10, pady=10, sticky="w")
-        self.basic_detect = create_radiobutton(master=self.radiobutton_frame, text="Basic", row=0, column=1, variable=self.radio_var, value="yolo")
-        self.advance_detect = create_radiobutton(master=self.radiobutton_frame, text="Advanced", row=0, column=2,variable=self.radio_var, value="sam")
+        self.save_image = create_radiobutton(master=self.radiobutton_frame, text="Yes", row=0, column=1, variable=self.radio_var, value=True)
+        self.discard_image = create_radiobutton(master=self.radiobutton_frame, text="No", row=0, column=2,variable=self.radio_var, value=False)
 
         # Start/Cancel Button (row 3)
         self.start_stop_button = ctk.CTkButton(self, text="Start", command=self.start_stop_toggle, font=("Calibri", 50))
@@ -247,7 +229,7 @@ class App(ctk.CTk):
 
         self.thread = threading.Thread(
             target = self.test_svs_tiles,
-            args = (svs_dir, output_dir, self.radio_var.get()),
+            args = (svs_dir, output_dir),
             daemon = True
         )
         self.thread.start()
@@ -275,10 +257,9 @@ class App(ctk.CTk):
             self.percentage_label_total.configure(text=f"{total_progress*100:.1f}%")
 
     # Logic
-    def test_svs_tiles(self, svs_dir, output_dir, cell_detection_model):
+    def test_svs_tiles(self, svs_dir, output_dir):
         yolo_model = load_yolo_model(YOLO_MODEL_PATH)
         resnet_model = load_resnet_model(RESNET_MODEL_PATH)
-        sam_model = load_sam_model(SAM_MODEL_PATH)
         set_total_svs_file_count(sum(file.lower().endswith('.svs') for file in os.listdir(svs_dir)))
         for file in os.listdir(svs_dir):
             if file.lower().endswith('.svs'):
@@ -290,19 +271,12 @@ class App(ctk.CTk):
                     os.makedirs(os.path.join(file_output_dir, class_name), exist_ok=True)
                 set_current_svs_total_tiles(0)
                 set_processed_current_svs_tiles(0)
-                if cell_detection_model == "sam":
-                    self.process_svs_file(svs_path, resnet_model, file_output_dir, sam_model=sam_model)
-                    print("hi sam")
-                elif cell_detection_model == "yolo":
-                    self.process_svs_file(svs_path, resnet_model, file_output_dir, yolo_model=yolo_model)
-                    set_processed_svs_file_count(get_processed_svs_file_count() + 1)
-                    print("hi yolo")
-                else:
-                    return
+                self.process_svs_file(svs_path, resnet_model, file_output_dir, yolo_model=yolo_model)
+                set_processed_svs_file_count(get_processed_svs_file_count() + 1)
                 
         self.start_stop_button.configure(text="Start", fg_color="#7289da", hover_color="#5b6eae")
 
-    def process_svs_file(self, svs_path, resnet_model, output_dir, yolo_model = None, sam_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
+    def process_svs_file(self, svs_path, resnet_model, output_dir, yolo_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
         print(f"Processing SVS file: {svs_path}")
         try:
             full_slide = pyvips.Image.new_from_file(svs_path, access='sequential')
@@ -342,76 +316,69 @@ class App(ctk.CTk):
                     set_current_svs_total_tiles(get_current_svs_total_tiles() - 1)
                     self.update_progress_bar()
                     continue
-                self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=yolo_model, sam_model=sam_model)
+                self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=yolo_model)
 
-        
+    def process_tile(self, tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=None):
+        # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
+        tile_np = self.pyvips_to_numpy(tile)
+        # 在瓷砖上运行 YOLO 检测
+        try:
+            detections = self.yolo_detect_cells(yolo_model, tile_np)
+        except Exception as e:
+            print(f"Failed to detect cells: {e}")
+            return
 
-    def process_tile(self, tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, output_dir, yolo_model=None, sam_model=None):
-        # # tile 为经过 pyvips.crop() 并 resize 后的瓷砖，尺寸约为 TILE_SIZE×TILE_SIZE（检测级别下）
-        # tile_np = self.pyvips_to_numpy(tile)
-        # # 在瓷砖上运行 YOLO 检测
-        # try:
-        #     if yolo_model:
-        #         print("using yolo for detection")
-        #         print(f"curernt total tiles: {get_current_svs_total_tiles()}")
-        #         detections = self.yolo_detect_cells(yolo_model, tile_np)
-        #     elif sam_model:
-        #         print("using sam for detection")
-        #         masks = sam_model.generate(tile_np)
-        #         detections = self.sam_detect_cells(tile_np, masks)
-        # except Exception as e:
-        #     print(f"Failed to detect cells: {e}")
-        #     return
+        if not detections:
+            return
+        for idx, det in enumerate(detections):
+            x1, y1, x2, y2 = det['bbox']
+            # 判断检测框是否接近瓷砖边缘
+            touches_edge = (x1 < EDGE_MARGIN or y1 < EDGE_MARGIN or x2 > (TILE_SIZE - EDGE_MARGIN) or y2 > (TILE_SIZE - EDGE_MARGIN))
+            # 将瓷砖内检测框坐标转换为全分辨率下的全局坐标（level0）：
+            global_x1 = int((tile_origin_x + x1) * scale)
+            global_y1 = int((tile_origin_y + y1) * scale)
+            global_x2 = int((tile_origin_x + x2) * scale)
+            global_y2 = int((tile_origin_y + y2) * scale)
+            margin_full = int(EDGE_MARGIN * scale)
+            # 若检测框在边缘，则以检测中心为基准重新确定裁剪区域
+            if touches_edge:
+                center_x = (global_x1 + global_x2) // 2
+                center_y = (global_y1 + global_y2) // 2
+                box_width = global_x2 - global_x1
+                box_height = global_y2 - global_y1
+                crop_width = box_width + 2 * margin_full
+                crop_height = box_height + 2 * margin_full
+                new_x1 = max(0, center_x - crop_width // 2)
+                new_y1 = max(0, center_y - crop_height // 2)
+                new_x2 = min(full_width, new_x1 + crop_width)
+                new_y2 = min(full_height, new_y1 + crop_height)
+            else:
+                new_x1 = max(0, global_x1 - margin_full)
+                new_y1 = max(0, global_y1 - margin_full)
+                new_x2 = min(full_width, global_x2 + margin_full)
+                new_y2 = min(full_height, global_y2 + margin_full)
+            crop_w = new_x2 - new_x1
+            crop_h = new_y2 - new_y1
+            try:
+                cell_region = full_slide.crop(new_x1, new_y1, crop_w, crop_h)
+            except Exception as e:
+                print(f"Failed to crop cell region: {e}")
+                continue
+            cell_np = self.pyvips_to_numpy(cell_region)
+            preds, confs = self.classify_cells(resnet_model, [cell_np])
+            class_idx = preds[0]
+            conf = confs[0]
+            class_name = CLASS_NAMES[class_idx]
+            label = f"{class_name}: {conf:.2f}"
 
-        # if not detections:
-        #     return
-        # for idx, det in enumerate(detections):
-        #     x1, y1, x2, y2 = det['bbox']
-        #     # 判断检测框是否接近瓷砖边缘
-        #     touches_edge = (x1 < EDGE_MARGIN or y1 < EDGE_MARGIN or x2 > (TILE_SIZE - EDGE_MARGIN) or y2 > (TILE_SIZE - EDGE_MARGIN))
-        #     # 将瓷砖内检测框坐标转换为全分辨率下的全局坐标（level0）：
-        #     global_x1 = int((tile_origin_x + x1) * scale)
-        #     global_y1 = int((tile_origin_y + y1) * scale)
-        #     global_x2 = int((tile_origin_x + x2) * scale)
-        #     global_y2 = int((tile_origin_y + y2) * scale)
-        #     margin_full = int(EDGE_MARGIN * scale)
-        #     # 若检测框在边缘，则以检测中心为基准重新确定裁剪区域
-        #     if touches_edge:
-        #         center_x = (global_x1 + global_x2) // 2
-        #         center_y = (global_y1 + global_y2) // 2
-        #         box_width = global_x2 - global_x1
-        #         box_height = global_y2 - global_y1
-        #         crop_width = box_width + 2 * margin_full
-        #         crop_height = box_height + 2 * margin_full
-        #         new_x1 = max(0, center_x - crop_width // 2)
-        #         new_y1 = max(0, center_y - crop_height // 2)
-        #         new_x2 = min(full_width, new_x1 + crop_width)
-        #         new_y2 = min(full_height, new_y1 + crop_height)
-        #     else:
-        #         new_x1 = max(0, global_x1 - margin_full)
-        #         new_y1 = max(0, global_y1 - margin_full)
-        #         new_x2 = min(full_width, global_x2 + margin_full)
-        #         new_y2 = min(full_height, global_y2 + margin_full)
-        #     crop_w = new_x2 - new_x1
-        #     crop_h = new_y2 - new_y1
-        #     try:
-        #         cell_region = full_slide.crop(new_x1, new_y1, crop_w, crop_h)
-        #     except Exception as e:
-        #         print(f"Failed to crop cell region: {e}")
-        #         continue
-        #     cell_np = self.pyvips_to_numpy(cell_region)
-        #     preds, confs = self.classify_cells(resnet_model, [cell_np])
-        #     # class_idx = preds[0]
-        #     # conf = confs[0]
-        #     # class_name = CLASS_NAMES[class_idx]
-        #     # label = f"{class_name}: {conf:.2f}"
-        #     # cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
-        #     # out_folder = os.path.join(output_dir, class_name)
-        #     # os.makedirs(out_folder, exist_ok=True)
-        #     # out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
-        #     # out_path = os.path.join(out_folder, out_filename)
-        #     # cv2.imwrite(out_path, cell_np)
-        #     # print(f"Saved cell image: {out_path}")
+            if (self.radio_var.get()):
+                cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
+                out_folder = os.path.join(output_dir, class_name)
+                os.makedirs(out_folder, exist_ok=True)
+                out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
+                out_path = os.path.join(out_folder, out_filename)
+                cv2.imwrite(out_path, cell_np)
+                print(f"Saved cell image: {out_path}")
 
         set_processed_current_svs_tiles(get_processed_current_svs_tiles() + 1)
         self.update_progress_bar()
@@ -440,82 +407,6 @@ class App(ctk.CTk):
                     boxes.append({'bbox': [x1, y1, x2, y2]})
         return boxes
 
-    def sam_detect_cells(self, image, anns, padding=0):
-        """
-        Given an image and a list of annotations, this function will return a list of bounding boxes
-        for each annotation that is not completely contained within another annotation.
-        
-        Args:
-            image: The image as a numpy array.
-            anns: A list of annotations, where each annotation is a dictionary with a 'segmentation' key
-                that contains a binary mask.
-            padding: The number of pixels to pad around each bounding box.
-            
-        Returns:
-            A list of bounding boxes, where each bounding box is a list of four integers: [x_min, y_min, x_max, y_max].
-        """
-        # First, compute bounding boxes for each annotation.
-        sorted_anns = sorted(anns, key=lambda x: x['area'])
-        filtered_anns = sorted_anns
-        filtered_anns = [sorted_anns[-1]] # Append the last (largest) mask first, since no other mask can be nested inside it
-
-        for i, ann in enumerate(sorted_anns[:-1]):  # Iterate up to second-to-last
-            nested = False
-            bbox_i = ann['segmentation']
-            for j in range(i+1, len(sorted_anns)):
-                bbox_j = sorted_anns[j]['segmentation']
-
-                # Nested mask check using XOR
-                if np.all(np.logical_and(bbox_i, np.logical_not(bbox_j)) == 0):  # Check for all zeros
-                    nested = True
-                    break
-            if not nested:
-                filtered_anns.append(ann)
-
-        image_size = image.shape[0] * image.shape[1]
-        boxes = []  # Each element will be ((x_min, y_min, x_max, y_max))
-        for ann in filtered_anns:
-            mask = ann['segmentation']
-            coords = np.column_stack(np.where(mask))
-            if coords.size == 0:
-                continue
-            
-            y_min, x_min = coords.min(axis=0)
-            y_max, x_max = coords.max(axis=0)
-            
-            # Apply padding and ensure coordinates remain within image bounds.
-            y_min = max(y_min - padding, 0)
-            x_min = max(x_min - padding, 0)
-            y_max = min(y_max + padding, image.shape[0] - 1)
-            x_max = min(x_max + padding, image.shape[1] - 1)
-
-            area = (y_max - y_min) * (x_max - x_min)
-            if (area/image_size) < 1/8:  
-                boxes.append((x_min, y_min, x_max, y_max))
-        
-        # Define a helper function to check if one box is contained within another.
-        def is_contained(inner, outer):
-            ix_min, iy_min, ix_max, iy_max = inner
-            ox_min, oy_min, ox_max, oy_max = outer
-            return (ix_min >= ox_min) and (iy_min >= oy_min) and (ix_max <= ox_max) and (iy_max <= oy_max)
-        
-        # Now filter out nested boxes:
-        # We'll only draw a box if it is not completely contained within any other box.
-        final_boxes = []
-        for i, box_i in enumerate(boxes):
-            nested = False
-            for j, box_j in enumerate(boxes):
-                if i == j:
-                    continue
-                # If box_i is completely inside box_j, mark it as nested.
-                if is_contained(box_i, box_j):
-                    nested = True
-                    break
-            if not nested:
-                x1, y1, x2, y2 = box_i
-                final_boxes.append({'bbox': [x1, y1, x2, y2]})
-        return final_boxes
-
     def classify_cells(self, resnet_model, cell_images):
         cell_tensors = []
         for cell_img in cell_images:
@@ -541,7 +432,6 @@ class App(ctk.CTk):
                                 std =[0.229,0.224,0.225])
         ])
         return preprocess(cell_image)
-
 
 if __name__ == "__main__":
     app = App()

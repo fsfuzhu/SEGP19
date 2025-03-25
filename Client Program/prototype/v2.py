@@ -30,10 +30,6 @@ CLASS_COLOURS = {
     "abnormal": (28, 32, 190),
 }
 
-# Cell Count
-NORMAL_TOTAL = 0
-ABNORMAL_TOTAL = 0
-
 # 瓷砖（tile）参数：
 TILE_SIZE = 1024           # 在检测级别下，每个瓷砖尺寸（单位像素）
 DETECTION_LEVEL = 1        # 用于检测的图像级别（一般低于 0 级可大幅降低尺寸）
@@ -93,12 +89,6 @@ def load_resnet_model(model_path, num_classes=2):
     model.to(device)
     return model
 
-def get_abnormal_total():
-    return ABNORMAL_TOTAL
-
-def get_normal_total():
-    return NORMAL_TOTAL
-
 def get_current_svs_total_tiles():
     return CURRENT_SVS_TOTAL_TILES
 
@@ -110,14 +100,6 @@ def get_total_svs_file_count():
 
 def get_processed_svs_file_count():
     return PROCESSED_SVS_FILE_COUNT
-
-def set_abnormal_total(value):
-    global ABNORMAL_TOTAL
-    ABNORMAL_TOTAL = value
-
-def set_normal_total(value):
-    global NORMAL_TOTAL
-    NORMAL_TOTAL = value
 
 def set_current_svs_total_tiles(value):
     global CURRENT_SVS_TOTAL_TILES
@@ -378,10 +360,6 @@ class App(ctk.CTk):
             preds, confs = self.classify_cells(resnet_model, [cell_np])
             class_idx = preds[0]
             conf = confs[0]
-            if class_idx == 0:
-                set_abnormal_total(get_abnormal_total() + 1)
-            elif class_idx == 1:
-                set_normal_total(get_normal_total() + 1)
             class_name = CLASS_NAMES[class_idx]
             label = f"{class_name}: {conf:.2f}"
 

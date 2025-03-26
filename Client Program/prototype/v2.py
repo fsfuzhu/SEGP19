@@ -117,13 +117,14 @@ def set_processed_svs_file_count(value):
     global PROCESSED_SVS_FILE_COUNT
     PROCESSED_SVS_FILE_COUNT = value
 
-class App(ctk.CTk):
+class MainApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         # Window config
         self.title("V2")
-        self.geometry("552x769")
+        self.center_window(552, 769)
+        self.attributes("-topmost", True)
         self.resizable(False, False)
 
         # Grid config
@@ -206,6 +207,13 @@ class App(ctk.CTk):
 
         # Flag to keep track of start/stop events
         self.stop_event = threading.Event()
+
+    def center_window(self, width, height):
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
     def browse_svs(self):
         browse_directory(self.svs_path, "Select SVS Folder")
@@ -474,5 +482,4 @@ class App(ctk.CTk):
         return preprocess(cell_image)
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    MainApp().mainloop()

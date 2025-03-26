@@ -231,11 +231,12 @@ class App(ctk.CTk):
         svs_dir = self.svs_path.get()
         output_dir = self.jpg_path.get()
 
-        if not svs_dir or not output_dir:
+        if not svs_dir or (self.radio_var.get() and not output_dir):
             messagebox.showerror("Error", "Empty directory is not allowed!")
+            self.cancel_analyze()
             return
         
-        if not os.path.exists(output_dir):
+        if not os.path.exists(output_dir) and self.radio_var.get():
             os.makedirs(output_dir, exist_ok=True)
 
         self.stop_event.clear()
@@ -289,9 +290,11 @@ class App(ctk.CTk):
                 svs_path = os.path.join(svs_dir, file)
                 file_name = os.path.splitext(os.path.basename(file))[0]
                 file_output_dir = os.path.join(output_dir, file_name)
-                os.makedirs(output_dir, exist_ok=True)
-                for class_name in CLASS_NAMES:
-                    os.makedirs(os.path.join(file_output_dir, class_name), exist_ok=True)
+
+                if self.radio_var.get():
+                    for class_name in CLASS_NAMES:
+                        os.makedirs(os.path.join(file_output_dir, class_name), exist_ok=True)
+
                 set_current_svs_total_tiles(0)
                 set_processed_current_svs_tiles(0)
                 self.cell_counts[file_name] = {"normal": 0, "abnormal": 0}
@@ -304,6 +307,7 @@ class App(ctk.CTk):
 
     def process_svs_file(self, svs_path, resnet_model, output_dir, file_name, yolo_model = None, tile_size=TILE_SIZE, detection_level=DETECTION_LEVEL):
         print(f"Processing SVS file: {svs_path}")
+        
         try:
             full_slide = pyvips.Image.new_from_file(svs_path, access='sequential')
         except Exception as e:
@@ -316,6 +320,7 @@ class App(ctk.CTk):
         except Exception as e:
             print(f"Could not get downsample factor for level {detection_level}, defaulting to 1.0: {e}")
             scale = 1.0
+
         full_width = full_slide.width
         full_height = full_slide.height
         level_width = int(full_width / scale)
@@ -325,6 +330,7 @@ class App(ctk.CTk):
         tiles_y = (level_height + tile_size - 1) // tile_size
         print(f"Dividing slide into {tiles_x} x {tiles_y} = {tiles_x * tiles_y} tiles")
         set_current_svs_total_tiles(tiles_x * tiles_y)
+
         # 遍历所有瓷砖（此处采用顺序处理，也可使用线程池并行处理）
         for ty in range(tiles_y):
             for tx in range(tiles_x):

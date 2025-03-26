@@ -3,7 +3,7 @@ import cv2
 import torch
 import numpy as np
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 from torchvision import transforms
 from torchvision.models import resnet18
@@ -123,12 +123,12 @@ class App(ctk.CTk):
 
         # Window config
         self.title("V2")
-        self.geometry("550x532")
+        self.geometry("552x769")
         self.resizable(False, False)
 
         # Grid config
         self.grid_columnconfigure(2, weight=1)
-        self.grid_rowconfigure(6, weight=1)
+        self.grid_rowconfigure(7, weight=1)
 
         # SVS Input Section (row 0)
         self.select_svs_path = create_button(self, text="Browse SVS", row=0, column=0, padx=40, pady=20, command=self.browse_svs)
@@ -182,9 +182,30 @@ class App(ctk.CTk):
 
         self.progress_bar_total.set(0.0)
 
+        # Data Table (For Analytical Review)
+        self.data_frame = ctk.CTkFrame(self)
+        self.data_frame.grid(row=6, column=0, columnspan=2, padx=(40, 10), pady=10, sticky="ns")
+        self.tree = ttk.Treeview(self.data_frame, columns=("File Name", "Cell Type", "Cell Count"), show='headings')
+
+        # Configure table headers
+        for col in self.tree['columns']:
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=150, anchor="center")
+
+        # Add scrollbars for improved navigation
+        self.scroll_y = ttk.Scrollbar(self.data_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=self.scroll_y.set)
+
+        # Grid placement for table and scrollbar
+        self.tree.grid(row=0, column=0, sticky="nsew")
+        self.scroll_y.grid(row=0, column=1, sticky="ns")
+
+        # Enable resizing for dynamic size
+        self.data_frame.grid_rowconfigure(0, weight=1)
+        self.data_frame.grid_columnconfigure(0, weight=1)
+
         # Flag to keep track of start/stop events
         self.stop_event = threading.Event()
-
 
     def browse_svs(self):
         browse_directory(self.svs_path, "Select SVS Folder")
@@ -252,6 +273,11 @@ class App(ctk.CTk):
             self.percentage_label_current.configure(text=f"{current_progress*100:.1f}%")
             self.percentage_label_total.configure(text=f"{total_progress*100:.1f}%")
 
+    def populate_data_table(self, dict):
+        for file_name, counts in dict.items():
+            for cell_type, count in counts.items():
+                self.tree.insert("", "end", values=(file_name, cell_type.capitalize(), count))
+
     # Logic
     def test_svs_tiles(self, svs_dir, output_dir):
         self.cell_counts = {}
@@ -271,9 +297,8 @@ class App(ctk.CTk):
                 self.cell_counts[file_name] = {"normal": 0, "abnormal": 0}
                 self.process_svs_file(svs_path, resnet_model, file_output_dir, file_name, yolo_model=yolo_model)
                 set_processed_svs_file_count(get_processed_svs_file_count() + 1)
-                print(f"Normal = {self.cell_counts[file_name]['normal']}, Abnormal = {self.cell_counts[file_name]['abnormal']}")
-                print(f"Cell Tiles Total: {get_current_svs_total_tiles()}")
-                print(f"Cell Tiles Processed: {get_processed_current_svs_tiles()}")
+                self.tree.delete(*self.tree.get_children())
+                self.populate_data_table(self.cell_counts)
                 
         self.start_stop_button.configure(text="Start", fg_color="#7289da", hover_color="#5b6eae")
 
@@ -319,8 +344,6 @@ class App(ctk.CTk):
                     print(f"Failed to extract tile at ({tx}, {ty}): {e}")
                     set_current_svs_total_tiles(get_current_svs_total_tiles() - 1)
                     self.update_progress_bar()
-                    print(f"Processed Tiles: {get_processed_current_svs_tiles()}")
-                    print(f"Total Tiles non-corrupted: {get_current_svs_total_tiles()}")
                     continue
                 self.process_tile(tile, tile_origin_x, tile_origin_y, scale, full_width, full_height, full_slide, resnet_model, file_name, output_dir, yolo_model=yolo_model)
 

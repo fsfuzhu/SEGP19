@@ -122,9 +122,8 @@ class MainApp(ctk.CTk):
         super().__init__()
 
         # Window config
-        self.title("V2")
+        self.title("Pap Smear Analysis Tool")
         self.center_window(552, 769)
-        self.attributes("-topmost", True)
         self.resizable(False, False)
 
         # Grid config
@@ -132,17 +131,17 @@ class MainApp(ctk.CTk):
         self.grid_rowconfigure(7, weight=1)
 
         # SVS Input Section (row 0)
-        self.select_svs_path = create_button(self, text="Browse SVS", row=0, column=0, padx=40, pady=20, command=self.browse_svs)
+        self.select_svs_path = create_button(self, text="SVS Folder", row=0, column=0, padx=40, pady=20, command=self.browse_svs)
         self.svs_path = create_path_input(self, width=280, row=0, column=1)
 
         # Browse JPG Output (row 1)
-        self.select_output_path = create_button(self, text="JPG Output", row=1, column=0, padx=40, pady=20, command=self.browse_output)
+        self.select_output_path = create_button(self, text="Cell Output Folder", row=1, column=0, padx=40, pady=20, command=self.browse_output)
         self.jpg_path = create_path_input(self, width=280, row=1, column=1)
 
         # Save/Discard Images (row 2)
         self.radio_var = tk.BooleanVar(value=True)
         self.radiobutton_frame = create_ctk_frame(self, row=2, column=0, columnspan=2, padx=(40, 10), sticky="ew")
-        self.label_radio_group = ctk.CTkLabel(master=self.radiobutton_frame, text="Save Image to Disk: ", font=("Calibri", 15))
+        self.label_radio_group = ctk.CTkLabel(master=self.radiobutton_frame, text="Save Cell Images to Disk: ", font=("Calibri", 15))
         self.label_radio_group.grid(row=0, column=0, padx=10, pady=10, sticky="w")
         self.save_image = create_radiobutton(master=self.radiobutton_frame, text="Yes", row=0, column=1, variable=self.radio_var, value=True)
         self.discard_image = create_radiobutton(master=self.radiobutton_frame, text="No", row=0, column=2,variable=self.radio_var, value=False)
@@ -320,6 +319,7 @@ class MainApp(ctk.CTk):
             full_slide = pyvips.Image.new_from_file(svs_path, access='sequential')
         except Exception as e:
             messagebox.showerror("SVS Error", f"Failed to open SVS file: {e}")
+            self.cancel_analyze()
             return
         # 获取指定检测级别下的 downsample 因子（相对于 level0）
         try:

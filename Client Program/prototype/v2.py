@@ -283,8 +283,10 @@ class MainApp(ctk.CTk):
 
     def populate_data_table(self, dict):
         for file_name, counts in dict.items():
+            total_cells = sum(counts.values())
             for cell_type, count in counts.items():
-                self.tree.insert("", "end", values=(file_name, cell_type.capitalize(), count))
+                percentage = (count / total_cells * 100) if total_cells > 0 else 0
+                self.tree.insert("", "end", values=(file_name, cell_type.capitalize(), f"{count} ({percentage:.2f}%)"))
 
     # Logic
     def test_svs_tiles(self, svs_dir, output_dir):

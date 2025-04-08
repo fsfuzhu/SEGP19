@@ -145,6 +145,7 @@ class MainApp(ctk.CTk):
         self.label_radio_group.grid(row=0, column=0, padx=10, pady=10, sticky="w")
         self.save_image = create_radiobutton(master=self.radiobutton_frame, text="Yes", row=0, column=1, variable=self.radio_var, value=True)
         self.discard_image = create_radiobutton(master=self.radiobutton_frame, text="No", row=0, column=2,variable=self.radio_var, value=False)
+        self.radio_var.trace_add("write", self.toggle_output_button)
 
         # Start/Cancel Button (row 3)
         self.start_stop_button = ctk.CTkButton(self, text="Start", command=self.start_stop_toggle, font=("Calibri", 50))
@@ -219,6 +220,12 @@ class MainApp(ctk.CTk):
 
     def browse_output(self):
         browse_directory(self.jpg_path, "Select Output Folder")
+
+    def toggle_output_button(self, *args):
+        if self.radio_var.get():
+            self.select_output_path.configure(state="normal")
+        else:
+            self.select_output_path.configure(state="disabled")
 
     def start_stop_toggle(self):
         if self.start_stop_button.cget("text") == "Start":

@@ -141,7 +141,7 @@ class MainApp(ctk.CTk):
         # Save/Discard Images (row 2)
         self.radio_var = tk.BooleanVar(value=True)
         self.radiobutton_frame = create_ctk_frame(self, row=2, column=0, columnspan=2, padx=(40, 10), sticky="ew")
-        self.label_radio_group = ctk.CTkLabel(master=self.radiobutton_frame, text="Save Cell Images to Disk: ", font=("Calibri", 15))
+        self.label_radio_group = ctk.CTkLabel(master=self.radiobutton_frame, text="Save Abnormal Cells to Disk: ", font=("Calibri", 15))
         self.label_radio_group.grid(row=0, column=0, padx=10, pady=10, sticky="w")
         self.save_image = create_radiobutton(master=self.radiobutton_frame, text="Yes", row=0, column=1, variable=self.radio_var, value=True)
         self.discard_image = create_radiobutton(master=self.radiobutton_frame, text="No", row=0, column=2,variable=self.radio_var, value=False)
@@ -429,12 +429,10 @@ class MainApp(ctk.CTk):
             class_name = CLASS_NAMES[class_idx]
             label = f"{class_name}: {conf:.2f}"
 
-            if (self.radio_var.get()):
+            if (self.radio_var.get() and class_idx == 0):
                 cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
-                out_folder = os.path.join(output_dir, class_name)
-                os.makedirs(out_folder, exist_ok=True)
                 out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
-                out_path = os.path.join(out_folder, out_filename)
+                out_path = os.path.join(output_dir, out_filename)
                 cv2.imwrite(out_path, cell_np)
                 print(f"Saved cell image: {out_path}")
 

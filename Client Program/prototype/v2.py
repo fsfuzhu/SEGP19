@@ -306,11 +306,7 @@ class MainApp(ctk.CTk):
                 svs_path = os.path.join(svs_dir, file)
                 file_name = os.path.splitext(os.path.basename(file))[0]
                 file_output_dir = os.path.join(output_dir, file_name)
-
-                if self.radio_var.get():
-                    for class_name in CLASS_NAMES:
-                        os.makedirs(os.path.join(file_output_dir, class_name), exist_ok=True)
-
+                os.makedirs(file_output_dir, exist_ok=True)
                 set_current_svs_total_tiles(0)
                 set_processed_current_svs_tiles(0)
                 self.cell_counts[file_name] = {"normal": 0, "abnormal": 0}
@@ -430,7 +426,23 @@ class MainApp(ctk.CTk):
             label = f"{class_name}: {conf:.2f}"
 
             if (self.radio_var.get() and class_idx == 0):
-                cv2.putText(cell_np, label, (5, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.7, CLASS_COLOURS.get(class_name, (255,255,255)), 2)
+                h, w = cell_np.shape[:2]
+                scale_factor = min(w, h) / 300.0
+                font_scale = max(0.4, min(1.2, scale_factor))  # clamp the font scale
+                thickness = max(1, int(font_scale * 2))        # adjust thickness
+
+                text_x = 5
+                text_y = int(20 * font_scale)  # adjust position to match scaled text
+
+                cv2.putText(
+                    cell_np,
+                    label,
+                    (text_x, text_y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    font_scale,
+                    CLASS_COLOURS.get(class_name, (255, 255, 255)),
+                    thickness
+                )
                 out_filename = f"tile_{tile_origin_x}_{tile_origin_y}_cell_{idx}.jpg"
                 out_path = os.path.join(output_dir, out_filename)
                 cv2.imwrite(out_path, cell_np)

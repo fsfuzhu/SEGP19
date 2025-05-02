@@ -41,20 +41,6 @@ The system employs a two-stage pipeline:
    pip install opencv-python numpy ultralytics customtkinter
    ```
 
-## Usage Instructions
-
-### Running the Application
-1. Navigate to the application directory
-2. Run the main application:
-   ```
-   python main.py
-   ```
-3. In the interface:
-   - Select the input directory containing WSI (.svs) files
-   - Choose an output directory for results
-   - Optionally enable saving of detected abnormal cells
-   - Click "Start" to begin processing
-
 ### Model Performance
 - Cell Detection (YOLOv8): 92.5% mAP@0.5, 91.2% precision, 94.3% recall
 - Cell Classification (ResNet18): 96.36% precision, 98.63% recall, 97.48% F1 score
